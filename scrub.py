@@ -1,5 +1,6 @@
 import os
 import re
+from subprocess import Popen, call, PIPE
 
 def findSilences(log_output):
     matches = re.findall(r"(silence_[a-z]+): ([\-\d\.]+)", log_output)
@@ -52,27 +53,39 @@ def generateFilterGraph(silences, factor, audio_rate=44100, delay=0.25, rescale=
         concat_string[-1] = concat_string[-1].replace('an', 'a')
     return '\n'.join(vstrings + astrings + concat_string)
 
-def autoScrub(vid, segments):
-    length = getLength
-    # os.chdir('C://Users/Helios/Desktop')
-    scrubcommand = 'ffmpeg -ss 0:00 -i {0} -to {1} -c copy -y st.mp4 && ffmpeg -i {0} -ss {1} -to {2} -c copy -y mid.mp4 && ffmpeg -ss {2} -i {0} -to {3} -c copy -y end.mp4 && ffmpeg -i mid.mp4 -filter:v "setpts=0.1*PTS" -an -y slow.mp4 && ffmpeg -f concat -safe 0 -i concat.txt -c copy -y {0}'.format(
-        vid, start, stop, '9:49')
-    print(scrubcommand)
-    with open(os.devnull, 'w') as silence:
-        subprocess.call(
-            scrubcommand, shell=True, stdout=silence, stderr=silence)
-"""
-http://stackoverflow.com/questions/3844430/how-to-get-the-duration-of-a-video-in-python
-"""
-def getLength(filename):
-  result = subprocess.Popen(["ffprobe", filename],
-    stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
-  return [x for x in result.stdout.readlines() if "Duration" in x]
+def trim(input_path, tstart=0, tstop=None, output_path=None, overwrite=None):
+    folder, filename = os.path.split(input_path)
+    if not isinstance(tstart, str):
+        tstart = '%.4f' % tstart
+    if tstop and not isinstance(tstop, str):
+        tstop = '%.4f' % tstop
+    command = ['ffmpeg', '-i', filename]
+    if float(tstart) > 0:
+        command += ['-ss', tstart]
+    if tstop is not None:
+        command += ['-to', tstop]
+    command += ['-c', 'copy']
+    if overwrite is not None:
+        command.append('-y' if overwrite==True else '-n')
+    if output_path is None:
+        filename_prefix, file_extension = os.path.splitext(filename)
+        output_path = filename_prefix + '_trimmed' + '.' + file_extension
+    command.append(output_path)
+    p = Popen(command, cwd=folder if folder else '.')
+    stdout, stderr = p.communicate()
+
+def getDuration(filename):
+    p = Popen(['ffprobe', filename], stdout=PIPE, stderr=PIPE)
+    stdout, stderr = p.communicate()
+    matches = re.findall('Duration: +([\d\:\.]+)', s)
+    if matches:
+        duration = matches[0]
+        seconds = reduce(lambda t60, x: t60 * 60 + x, map(float, duration.split(':')))
+        return seconds
+    else:
+        return None
 
 if __name__ == '__main__':
-    from subprocess import Popen, PIPE
-    import os
-
     # Loudness normalisation
     target_lufs = -18.0
 
@@ -83,18 +96,17 @@ if __name__ == '__main__':
     # Filepaths
     # input_path = 'lecture.mp4'
     # input_path = "C:\\Users\\russ\\Videos\\Production\\ffmpeg\\trec_sample_2736x1824\\sample.trec"
-    # input_path = "C:\\Users\\russ\\Videos\\Production\\ffmpeg\\focusrite_xlr_test\\capture-1.trec"
-    # input_path = "C:\\Users\\russ\\Documents\\Teaching\\PHS3051\\LectureRecordings\\2017\\Lecture2\\ModernOpticsLecture2mono12dB.mp4"
-    input_path = "C:\\Users\\russ\\Documents\\Teaching\\PHS3051\\LectureRecordings\\2017\\Lecture2\\ModernOpticsLecture2.trec"
+    input_path = "C:\\Users\\russ\\Videos\\Production\\ffmpeg\\focusrite_xlr_test\\capture-1.trec"
+    # input_path = "C:\\Users\\russ\\Documents\\Teaching\\PHS3051\\LectureRecordings\\2017\\Lecture2\\ModernOpticsLecture2.trec"
     # input_path = "C:\\Users\\russ\\Documents\\Teaching\\PHS3051\\LectureRecordings\\2017\\Lecture3\\ModernOpticsLecture3.trec"
-    # suffix = 'scrub'
-    # suffix = 'yt'
-    suffix = 'scrub_yt'
+    # input_path = "C:\\Users\\russ\\Videos\\YouTube\\Group3questionc-Fxdl0e3bfx8.mp4"
+    suffix = 'scrub'
 
     # Flags
-    overwrite = True
-    run_command = True
+    overwrite = False
+    run_command = False
     rescale = True
+    # pan_audio = False
     pan_audio = 'left'
     factor = 8
     
@@ -159,6 +171,8 @@ if __name__ == '__main__':
     youtube_other = '-strict -2'
     filter_command = '-filter_complex_script %s -map [v] -map [a]' % filter_script_path
     tail = '%s_%s.mp4' % (filename_prefix, suffix)
+    if overwrite:
+        tail = '-y ' + tail
     command_list = [header, youtube_video, youtube_audio, youtube_other, filter_command, tail]
     command = ' '.join(command_list)
     print('\nRunning ffmpeg command: \n' + command)
