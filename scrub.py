@@ -51,7 +51,13 @@ def generateFilterGraph(silences, factor, audio_rate=44100, delay=0.25, rescale=
         concat_string.append('[an]pan=stereo|c0=c1|c1=c1,volume=%.1fdB[a]' % gain)
     else:
         concat_string[-1] = concat_string[-1].replace('an', 'a')
+    if concat_string[-1].endswith(';'):
+        concat_string[-1] = concat_string[-1][:-1]
     return '\n'.join(vstrings + astrings + concat_string)
+
+def hhmmssd_to_seconds(s):
+    assert isinstance(s, str)
+    return reduce(lambda t60, x: t60 * 60 + x, map(float, s.split(':')))
 
 def trim(input_path, tstart=0, tstop=None, output_path=None, overwrite=None):
     folder, filename = os.path.split(input_path)
@@ -60,7 +66,7 @@ def trim(input_path, tstart=0, tstop=None, output_path=None, overwrite=None):
     if tstop and not isinstance(tstop, str):
         tstop = '%.4f' % tstop
     command = ['ffmpeg', '-i', filename]
-    if float(tstart) > 0:
+    if hhmmssd_to_seconds(tstart) > 0:
         command += ['-ss', tstart]
     if tstop is not None:
         command += ['-to', tstop]
@@ -69,7 +75,7 @@ def trim(input_path, tstart=0, tstop=None, output_path=None, overwrite=None):
         command.append('-y' if overwrite==True else '-n')
     if output_path is None:
         filename_prefix, file_extension = os.path.splitext(filename)
-        output_path = filename_prefix + '_trimmed' + '.' + file_extension
+        output_path = filename_prefix + '_trimmed' + file_extension
     command.append(output_path)
     p = Popen(command, cwd=folder if folder else '.')
     stdout, stderr = p.communicate()
@@ -80,7 +86,7 @@ def getDuration(filename):
     matches = re.findall('Duration: +([\d\:\.]+)', s)
     if matches:
         duration = matches[0]
-        seconds = reduce(lambda t60, x: t60 * 60 + x, map(float, duration.split(':')))
+        seconds = hhmmssd_to_seconds(duration)
         return seconds
     else:
         return None
@@ -96,15 +102,18 @@ if __name__ == '__main__':
     # Filepaths
     # input_path = 'lecture.mp4'
     # input_path = "C:\\Users\\russ\\Videos\\Production\\ffmpeg\\trec_sample_2736x1824\\sample.trec"
-    input_path = "C:\\Users\\russ\\Videos\\Production\\ffmpeg\\focusrite_xlr_test\\capture-1.trec"
+    # input_path = "C:\\Users\\russ\\Videos\\Production\\ffmpeg\\focusrite_xlr_test\\capture-1.trec"
+    # input_path = "C:\\Users\\russ\\Videos\\Production\\lightboard\\Light_Record-[2017-02-23_11-30-03]-000.mp4"
+    # input_path = "C:\\Users\\russ\\Documents\\Teaching\\PHS3051\\LectureRecordings\\2015\\PHS3051 Lecture 1 Martijn Jasperse-8y2Qbt3LdhA.mp4"
     # input_path = "C:\\Users\\russ\\Documents\\Teaching\\PHS3051\\LectureRecordings\\2017\\Lecture2\\ModernOpticsLecture2.trec"
     # input_path = "C:\\Users\\russ\\Documents\\Teaching\\PHS3051\\LectureRecordings\\2017\\Lecture3\\ModernOpticsLecture3.trec"
+    input_path = "C:\\Users\\russ\\Documents\\Teaching\\PHS3051\\LectureRecordings\\2017\\Lecture4\\ModernOpticsLecture4.trec"
     # input_path = "C:\\Users\\russ\\Videos\\YouTube\\Group3questionc-Fxdl0e3bfx8.mp4"
     suffix = 'scrub'
 
     # Flags
-    overwrite = False
-    run_command = False
+    overwrite = True
+    run_command = True
     rescale = True
     # pan_audio = False
     pan_audio = 'left'
@@ -119,7 +128,7 @@ if __name__ == '__main__':
         os.chdir(folder)
     if not os.path.exists(filter_script_path) or overwrite:
         print('Running ffprobe on %s' % filename)
-        command = 'ffprobe -i %s' % filename
+        command = 'ffprobe -i "%s"' % filename
         p = Popen(command, stdout=PIPE, stderr=PIPE)
         stdout, stderr = p.communicate()
 
@@ -133,7 +142,7 @@ if __name__ == '__main__':
             print('WARNING: Could not determine input audio sample rate. Defaulting to 44100 Hz')
 
         print('\nChecking loudness of file...')
-        command = 'ffmpeg -i %s -c:v copy -af ebur128 -f null NUL' % filename
+        command = 'ffmpeg -i "%s" -c:v copy -af ebur128 -f null NUL' % filename
         print(command)
         p = Popen(command, stdout=PIPE, stderr=PIPE)
         stdout, stderr = p.communicate()
@@ -146,7 +155,7 @@ if __name__ == '__main__':
         print('Measured loudness = %.1f LUFS; Silence threshold = %.1f dB; Gain to apply = %.1f dB' % (input_lufs, input_threshold_dB, gain))
 
         print('\nSearching for silence...')
-        command = 'ffmpeg -i %s -af silencedetect=n=%.1fdB:d=%s -f null NUL' % (filename, input_threshold_dB, silence_duration)
+        command = 'ffmpeg -i "%s" -af silencedetect=n=%.1fdB:d=%s -f null NUL' % (filename, input_threshold_dB, silence_duration)
         print(command)
         p = Popen(command, stdout=PIPE, stderr=PIPE)
         stdout, stderr = p.communicate()
@@ -165,12 +174,12 @@ if __name__ == '__main__':
         print('\nUsing existing filter_complex script.')
     
     # Concatenate the command
-    header = 'ffmpeg -i %s' % filename
+    header = 'ffmpeg -i "%s"' % filename
     youtube_video = '-c:v libx264 -crf 20 -bf 2 -flags +cgop -g 15 -pix_fmt yuv420p -movflags +faststart' # -tune stillimage
     youtube_audio = '-c:a aac -r:a 48000 -b:a 192k'
     youtube_other = '-strict -2'
-    filter_command = '-filter_complex_script %s -map [v] -map [a]' % filter_script_path
-    tail = '%s_%s.mp4' % (filename_prefix, suffix)
+    filter_command = '-filter_complex_script "%s" -map [v] -map [a]' % filter_script_path
+    tail = '"%s_%s.mp4"' % (filename_prefix, suffix)
     if overwrite:
         tail = '-y ' + tail
     command_list = [header, youtube_video, youtube_audio, youtube_other, filter_command, tail]
