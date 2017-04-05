@@ -171,51 +171,120 @@ def trimSegments(input_path, trimpts, output_path=None, overwrite=None):
     return segment_paths
 
 
-def generateFilterGraph(silences, factor, audio_rate=44100, delay=0.25, rescale=True, pan_audio='left', gain=0):
+def generateFilterGraph(silences, factor, delay=0.25, rescale=True, pan_audio='left', gain=0, audio_rate=44100, hasten_audio=False):
+    """Generate a complex filter (filtergraph string) for processing with the filter_complex argument of ffmpeg.
+
+    silences -- A list of silence dictionaries generated from getSilences function
+    factor -- to speed up or slow down video during (a subset of) each silent interval
+    delay -- in seconds to omit from the detected silent intervals when making the speed change (defaut 0.25)
+    rescale -- Scale and pad the video (pillar- or letter-box as required) for 1920 x 1080 display (default True)
+    pan_audio -- 'left', 'right', or None/False specify whether to duplicate one stereo channel of input audio stream (defult 'left')
+    gain -- in dB to apply when pan_audio is 'left' or 'right'
+    audio_rate -- Sample rate of audio input (in Hz, default 44100) used in asetrate/aresample filters when hasten_audio=True
+    hasten_audio -- Speed up audio during silent segment with asetrate and aresample filters (increases pitch)
+    """
+    # Omit silences at the start/end of the file
     if 'silence_end' not in silences[-1]:
         silences = silences[:-1]
     if silences[0]['silence_start'] <= 0.:
         silences = silences[1:]    
+
+    # Timestamp of end of most recently processed segment
     tf_last = 0
+
+    # Container for calls to trim (video) and atrim (audio) filters 
     vstrings = []
     astrings = []
+
+    # String to call concat filter with
     concat_string = ''
+
+    # Number of silences to process
     n = len(silences)
-    n_segs = 2*n + 1 # number of segments
+
+    # Number of segments (only because any beginning/end silences are gone)
+    n_segs = 2*n + 1
+    
+    # Generate 4 x filtergraph lines for each silence
     for i, s in enumerate(silences):
+        # Number segments in filtergraph from 1 to n_segs
         i += 1
+
+        # Cast end of last segment to string
         t0 = '%.4f' % tf_last
+
+        # Begin trim (& speedup) delay seconds after silence_start
         ti = '%.4f' % (s['silence_start'] + delay)
+
+        # End trim (& speedup) delay seconds before silence_end
         tf = '%.4f' % (s['silence_end'] - delay)
+
+        # Predicted duration of sped up segment based on above and factor 
         ta = '%.4f' % (s['silence_start'] + delay + (s['silence_duration'] - 2*delay)/factor)
+
+        # Trim video before this silence (regular speed)
         vstrings.append('[0:v]trim=%s:%s,setpts=PTS-STARTPTS[v%i];' % (t0, ti, (2*i-1)))
+
+        # Trim video during this silence and speed up using setpts
         vstrings.append('[0:v]trim=%s:%s,setpts=(PTS-STARTPTS)/%i[v%i];' % (ti, tf, factor, (2*i)))
+
+        # Trim video before this silence (regular speed)
         astrings.append('[0:a]atrim=%s:%s,asetpts=PTS-STARTPTS[a%i];' % (t0, ti, (2*i-1)))
-        astrings.append('[0:a]atrim=%s:%s,asetpts=PTS-STARTPTS[a%i];' % (ti, ta, (2*i)))
-        # astrings.append('[0:a]atrim=%s:%s,asetpts=PTS-STARTPTS,asetrate=%i,aresample=%i,volume=0.0[a%i];' % (ti, tf, (factor*audio_rate), audio_rate, (2*i)))
+        if hasten_audio:
+            # Speed up audio during silent segment with asetrate and aresample filters (increases pitch)
+            astrings.append('[0:a]atrim=%s:%s,asetpts=PTS-STARTPTS,asetrate=%i,aresample=%i,volume=0.0[a%i];' % (ti, tf, (factor*audio_rate), audio_rate, (2*i)))
+        else:
+            # Use first 1/factor samples of silence for audio (no pitch increase)
+            astrings.append('[0:a]atrim=%s:%s,asetpts=PTS-STARTPTS[a%i];' % (ti, ta, (2*i)))
+
+        # Append these streams to the concat filter input
         concat_string += '[v%i][a%i][v%i][a%i]' % ((2*i-1), (2*i-1), (2*i), (2*i))
         tf_last = s['silence_end'] - delay
+    
+    # Trim the final segment (regular speed) without specifying the end time
     vstrings.append('[0:v]trim=start=%.4f,setpts=PTS-STARTPTS[v%i];' % (tf_last, n_segs))
     astrings.append('[0:a]atrim=start=%.4f,asetpts=PTS-STARTPTS[a%i];' % (tf_last, n_segs))
+    
+    # Finish the concat filter call (outputs 'vn' and 'an')
     concat_string += '[v%i][a%i]concat=n=%i:v=1:a=1[vn][an];' % (n_segs, n_segs, n_segs)
-    concat_string = [concat_string]
+    
+    # Collect lines of the filter script after the trim/atrim calls 
+    tail = [concat_string]
     if rescale:
-        concat_string.append('[vn]scale=w=1920:h=1080:force_original_aspect_ratio=decrease[scaled];')
-        concat_string.append('[scaled]pad=1920:1080:(ow-iw)/2:(oh-ih)/2[v];')
+        # Scale and pad the video for 1920 x 1080 display
+        tail.append('[vn]scale=w=1920:h=1080:force_original_aspect_ratio=decrease[scaled];')
+        tail.append('[scaled]pad=1920:1080:(ow-iw)/2:(oh-ih)/2[v];')
     else:
-        concat_string[-1] = concat_string[-1].replace('vn', 'v')
+        # Rename the video output of concat to 'v' for processing
+        tail[-1] = concat_string[-1].replace('vn', 'v')
     if pan_audio == 'left':
+        # Duplicate left channel of input on right channel of output and apply gain
         concat_string.append('[an]pan=stereo|c0=c0|c1=c0,volume=%.1fdB[a]' % gain)
     elif pan_audio == 'right':
+        # Duplicate right channel of input on left channel of output and apply gain
         concat_string.append('[an]pan=stereo|c0=c1|c1=c1,volume=%.1fdB[a]' % gain)
     else:
+        # Rename the audio output of concat to 'a' for processing
         concat_string[-1] = concat_string[-1].replace('an', 'a')
     if concat_string[-1].endswith(';'):
+        # Remove trailing ';' in final line of filter script
         concat_string[-1] = concat_string[-1][:-1]
     return '\n'.join(vstrings + astrings + concat_string)
 
 
 def writeFilterGraph(filter_script_path, silences, **kwargs):
+    """Generate a complex filter script (filtergraph file) for processing with the filter_complex argument of ffmpeg.
+
+    filter_script_path -- Path to save the filter script 
+    silences -- A list of silence dictionaries generated from getSilences function
+    factor -- to speed up or slow down video during (a subset of) each silent interval
+    delay -- in seconds to omit from the detected silent intervals when making the speed change (defaut 0.25)
+    rescale -- Scale and pad the video (pillar- or letter-box as required) for 1920 x 1080 display (default True)
+    pan_audio -- 'left', 'right', or None/False specify whether to duplicate one stereo channel of input audio stream (defult 'left')
+    gain -- in dB to apply when pan_audio is 'left' or 'right'
+    audio_rate -- Sample rate of audio input (in Hz, default 44100) used in asetrate/aresample filters when hasten_audio=True
+    hasten_audio -- Speed up audio during silent segment with asetrate and aresample filters (increases pitch)
+    """
     filter_graph = generateFilterGraph(silences, **kwargs)
     with open(filter_script_path, 'w') as f:
         f.write(filter_graph)
