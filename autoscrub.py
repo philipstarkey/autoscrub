@@ -181,14 +181,15 @@ def concatFileList(concat_path, output_path, overwrite=None):
 
     This avoids a re-encode and can be used with formats that do not support file level concatenation.
     """
-    command = 'ffmpeg -safe 0 -f concat -i "%s" -c copy'
+    command = 'ffmpeg -safe 0 -f concat -i "%s" -c copy' % concat_path
     if overwrite is not None:
-        command += '-y' if overwrite==True else '-n'
-    command += '"%s"' % (conact_path, output_path)
+        command += ' -y ' if overwrite==True else ' -n '
+    command += ' "%s"' % output_path
+    print(command)
     try:
-        p = Popen(command, cwd=folder if folder else '.')
+        p = Popen(command)
         stdout, stderr = p.communicate()
-        return os.path.join(folder, output_path)
+        return output_path
     except Exception, e:
         print(e)
         return None         
@@ -206,12 +207,12 @@ def concatSegments(segment_paths, output_path=None, overwrite=None):
     """
     folder, first_path = os.path.split(segment_paths[0])
     first_prefix, file_extension = os.path.splitext(first_path)
-    filename_prefix = first_prefix.split('_')[:-1]
+    filename_prefix = '_'.join(first_prefix.split('_')[:-1])
     concat_file = ''.join(filename_prefix) + '_concat.txt'
     concat_path = os.path.join(folder, concat_file)
     if not os.path.exists(concat_path) or overwrite:
         with open(concat_path, 'w') as f:
-            '\n'.join(["file '%s'" % path for path in segment_paths])
+            f.write('\n'.join(["file '%s'" % path for path in segment_paths]))
     if not output_path:
         output_path = os.path.join(folder, filename_prefix + '_concat' + file_extension)
     concatFileList(concat_path, output_path, overwrite)
