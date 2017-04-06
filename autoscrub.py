@@ -171,6 +171,52 @@ def trimSegments(input_path, trimpts, output_path=None, overwrite=None):
     return segment_paths
 
 
+def concatFileList(concat_path, output_path, overwrite=None):
+    """Take a file list for the ffmpeg concat demuxer and save to output_path.
+    The concat file must contain lines of the form:
+
+    file '/path/to/file1'
+    file '/path/to/file2'
+    file '/path/to/file3'  
+
+    This avoids a re-encode and can be used with formats that do not support file level concatenation.
+    """
+    command = 'ffmpeg -safe 0 -f concat -i "%s" -c copy'
+    if overwrite is not None:
+        command += '-y' if overwrite==True else '-n'
+    command += '"%s"' % (conact_path, output_path)
+    try:
+        p = Popen(command, cwd=folder if folder else '.')
+        stdout, stderr = p.communicate()
+        return os.path.join(folder, output_path)
+    except Exception, e:
+        print(e)
+        return None         
+
+
+def concatSegments(segment_paths, output_path=None, overwrite=None):
+    """Concatenate a list of inputs (specified by path) using the ffmpeg conact demuxer.
+    A concat file will be created of the form 
+
+    file '/path/to/file1'
+    file '/path/to/file2'
+    file '/path/to/file3'  
+
+    This avoids a re-encode and can be used with formats that do not support file level concatenation.
+    """
+    folder, first_path = os.path.split(segment_paths[0])
+    first_prefix, file_extension = os.path.splitext(first_path)
+    filename_prefix = first_prefix.split('_')[:-1]
+    concat_file = ''.join(filename_prefix) + '_concat.txt'
+    concat_path = os.path.join(folder, concat_file)
+    if not os.path.exists(concat_path) or overwrite:
+        with open(concat_path, 'w') as f:
+            '\n'.join(["file '%s'" % path for path in segment_paths])
+    if not output_path:
+        output_path = os.path.join(folder, filename_prefix + '_concat' + file_extension)
+    concatFileList(concat_path, output_path, overwrite):
+
+
 def generateFilterGraph(silences, factor, delay=0.25, rescale=True, pan_audio='left', gain=0, audio_rate=44100, hasten_audio=False):
     """Generate a complex filter (filtergraph string) for processing with the filter_complex argument of ffmpeg.
 
