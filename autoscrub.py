@@ -115,7 +115,7 @@ def getLoudness(filename):
     return findLoudness(stderr)
 
 
-def trim(input_path, tstart=0, tstop=None, output_path=None, overwrite=None):
+def trim(input_path, tstart=0, tstop=None, output_path=None, overwrite=None, codec='copy', output_type=None):
     """Extract contents of input_path between tstart and tstop.
     
     Keyword arguments:
@@ -134,11 +134,16 @@ def trim(input_path, tstart=0, tstop=None, output_path=None, overwrite=None):
         command += ['-ss', tstart]
     if tstop is not None:
         command += ['-to', tstop]
-    command += ['-c', 'copy']
+    if codec == 'copy':
+        command += ['-c', 'copy']
+    else:
+        command += codec
     if overwrite is not None:
         command.append('-y' if overwrite==True else '-n')
     if output_path is None:
         filename_prefix, file_extension = os.path.splitext(filename)
+        if output_type is not None:
+            file_extension = output_type
         output_path = filename_prefix + '_trimmed' + file_extension
     command.append(output_path)
     try:
@@ -150,7 +155,7 @@ def trim(input_path, tstart=0, tstop=None, output_path=None, overwrite=None):
         return None 
 
 
-def trimSegments(input_path, trimpts, output_path=None, overwrite=None):
+def trimSegments(input_path, trimpts, output_path=None, output_type=None, **kwargs):
     """Extract segments of a file using a list of (tstart, tstop) tuples.
     Each segment is saved as a file of the same type as the original, in a
     folder called temp unless output_path is specified.
@@ -158,14 +163,16 @@ def trimSegments(input_path, trimpts, output_path=None, overwrite=None):
     """
     folder, filename = os.path.split(input_path)
     filename_prefix, file_extension = os.path.splitext(filename)
+    if output_type is not None:
+        file_extension = output_type
     temp_folder = output_path if output_path else os.path.join(folder, 'temp')
     if not os.path.exists(temp_folder):
-        os.mkir(temp_folder)
+        os.mkdir(temp_folder)
     segment_paths = []
-    for i, (tstart, tstop) in enumerate(segments):
+    for i, (tstart, tstop) in enumerate(trimpts):
         segment_file = filename_prefix + '_%03i' % i + file_extension
         segment_path = os.path.join(temp_folder, segment_file)
-        trim(input_path, tstart, tstop, outfile, overwrite)
+        trim(input_path, tstart, tstop, segment_path, **kwargs)
         print('Trimmed segment %03i of %s (from %s to %s).' % (i, filename, tstart, tstop))
         segment_paths.append(segment_path)
     return segment_paths
