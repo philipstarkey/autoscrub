@@ -2,12 +2,12 @@
 
 ### BEGIN INIT INFO
 # Provides:          myservice
-# Required-Start:    $remote_fs $syslog
+# Required-Start:    $network $remote_fs $syslog
 # Required-Stop:     $remote_fs $syslog
 # Default-Start:     2 3 4 5
 # Default-Stop:      0 1 6
 # Short-Description: Matrox Monarch indicator lights
-# Description:        Python script to control LEDs indicating status of Matrox Monarch video encoder
+# Description:       Python script to control LEDs indicating status of Matrox Monarch video encoder
 ### END INIT INFO
 
 # Change the next 3 lines to suit where you install your script and what you want to call it

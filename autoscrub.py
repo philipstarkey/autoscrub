@@ -18,6 +18,22 @@ def ffprobe(filename):
     return stderr
 
 
+def ffmpeg(filename, args=[], output_path=None, output_type=None):
+    """Runs ffmpeg on filename with the specified args."""
+    command = ['ffmpeg', '-i', '"%s"' % filename.replace('\\', '/')]
+    command += args
+    if output_path is None:
+        filename_prefix, file_extension = os.path.splitext(filename)
+        if output_type is not None:
+            file_extension = output_type
+        output_path = filename_prefix + '_processed' + file_extension
+    command += ['"%s"' % output_path.replace('\\', '/')]
+    print(' '.join(command))
+    p = Popen(command)
+    stdout, stderr = p.communicate()
+    return output_path
+
+
 def findDuration(log_output):
     """Finds the duration in seconds from ffprobe log_output."""
     matches = re.findall('Duration: +([\d\:\.]+)', log_output)
@@ -483,7 +499,9 @@ if __name__ == '__main__':
     # input_path = 'lecture.mp4'
     # input_path = "C:\\Users\\russ\\Documents\\Teaching\\PHS3051\\LectureRecordings\\2017\\Lecture2\\ModernOpticsLecture2.trec"
     # input_path = "C:\\Users\\russ\\Documents\\Teaching\\PHS3051\\LectureRecordings\\2017\\Lecture3\\ModernOpticsLecture3.trec"
-    input_path = "C:\\Users\\rander\\Documents\\Teaching\\PHS3051Optics\\LectureRecordings\\2017\\Lecture4\\ModernOpticsLecture4.trec"
+    # input_path = "C:\\Users\\rander\\Documents\\Teaching\\PHS3051Optics\\LectureRecordings\\2017\\Lecture4\\ModernOpticsLecture4.trec"
+    # input_path = "C:\\Users\\rander\\Documents\\Teaching\\PHS3051Optics\\LectureRecordings\\2017\\Lecture5\\ModernOpticsLecture5.trec"
+    input_path = "C:\\Users\\rander\\Documents\\Teaching\\PHS3051Optics\\LectureRecordings\\2017\\Lecture6\\ModernOpticsLecture6.trec"
     suffix = 'scrub'
 
     # Flags
