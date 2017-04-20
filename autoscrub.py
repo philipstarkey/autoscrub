@@ -20,14 +20,14 @@ def ffprobe(filename):
 
 def ffmpeg(filename, args=[], output_path=None, output_type=None):
     """Runs ffmpeg on filename with the specified args."""
-    command = ['ffmpeg', '-i', '"%s"' % filename.replace('\\', '/')]
+    command = ['ffmpeg', '-i', '%s' % filename.replace('\\', '/')]
     command += args
     if output_path is None:
         filename_prefix, file_extension = os.path.splitext(filename)
         if output_type is not None:
             file_extension = output_type
         output_path = filename_prefix + '_processed' + file_extension
-    command += ['"%s"' % output_path.replace('\\', '/')]
+    command += ['%s' % output_path.replace('\\', '/')]
     print(' '.join(command))
     p = Popen(command)
     stdout, stderr = p.communicate()
@@ -129,6 +129,18 @@ def getLoudness(filename):
     p = Popen(command, stdout=PIPE, stderr=PIPE)
     stdout, stderr = p.communicate()
     return findLoudness(stderr)
+
+
+def matchLoudness(filename, target_lufs=-18):
+    input_loudness = getLoudness(filename)
+    input_lufs = input_loudness['I']
+    gain = target_lufs - input_lufs
+    print('Input loudness = %.1f LUFS; Gain to apply = %.1f dB' % (input_lufs, gain))
+    output_path = ffmpeg(filename, ['-c:v', 'copy', '-af', 'volume=%.1fdB' % gain])
+    output_loudness = getLoudness(output_path)
+    output_lufs = output_loudness['I']
+    print('Output loudness = %.1f LUFS; Error = %.1f dB' % (output_lufs, target_lufs-output_lufs))
+    return output_path
 
 
 def trim(input_path, tstart=0, tstop=None, output_path=None, overwrite=None, codec='copy', output_type=None):
