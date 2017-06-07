@@ -1,6 +1,7 @@
 from autoscrub import *
 
-os.chdir('C:\\Users\\rander\\Videos')
+folder = "S:\\Sci-Global\\Lightboard\\Today"
+os.chdir(folder)
 mp4s = [x for x in os.listdir('.') if x.lower().endswith('.mp4') and 'processed' not in x]
 
 for path in mp4s:

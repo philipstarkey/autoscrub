@@ -1,13 +1,16 @@
+#!/usr/bin/python2
 import os
 import re
 from subprocess import Popen, call, PIPE
+from functools import reduce
 
 NUL = os.devnull
 
 def hhmmssd_to_seconds(s):
     """Convert a '[hh:]mm:ss[.d]' string to seconds. The hours and decimal seconds are optional."""
-    assert isinstance(s, str)
-    return reduce(lambda t60, x: t60 * 60 + x, map(float, s.split(':')))
+    if isinstance(s, str):
+        s = s.encode()
+    return reduce(lambda t60, x: t60 * 60 + x, map(float, s.split(b':')))
 
 
 def ffprobe(filename):
@@ -36,7 +39,7 @@ def ffmpeg(filename, args=[], output_path=None, output_type=None):
 
 def findDuration(log_output):
     """Finds the duration in seconds from ffprobe log_output."""
-    matches = re.findall('Duration: +([\d\:\.]+)', log_output)
+    matches = re.findall(b'Duration: +([\d\:\.]+)', log_output)
     if matches:
         duration = matches[0]
         seconds = hhmmssd_to_seconds(duration)
@@ -53,7 +56,7 @@ def getDuration(filename):
 
 def findSampleRate(log_output):
     """Finds the audio sample rate in Hz from ffprobe log_output."""
-    matches = re.findall(', ([\d]+) Hz', log_output)
+    matches = re.findall(b', ([\d]+) Hz', log_output)
     if matches:
         return int(matches[-1])
     else:
@@ -68,10 +71,10 @@ def getSampleRate(filename):
 
 def findSilences(log_output):
     """Extract silences from ffmpeg log_output when using the silencedetect filter."""
-    matches = re.findall(r"(silence_[a-z]+): ([\-\d\.]+)", log_output)
-    matches = [(k, float(v)) for (k, v) in matches]
+    matches = re.findall(b'(silence_[a-z]+): ([\-\d\.]+)', log_output)
+    matches = [(k.decode(), float(v)) for (k, v) in matches]
     if matches:
-        return [dict(matches[i:i + 3]) for i in xrange(0, len(matches), 3)]
+        return [dict(matches[i:i + 3]) for i in range(0, len(matches), 3)]
     else:
         return None
 
@@ -107,10 +110,10 @@ def getSilences(filename, input_threshold_dB=-18.0, silence_duration=2.0, save_s
 
 def findLoudness(log_output):
     """Extract loudness (key, value) pairs from ffmpeg log_output when using the ebur128 filter."""
-    log_split = re.split(r"Parsed_ebur128.+\r\n", log_output)
+    log_split = re.split(b'Parsed_ebur128.+\r\n', log_output)
     if len(log_split) > 1:
         summary = log_split[-1]
-        matches = re.findall(r"([A-Z][A-Za-z ]*): +([\-\d\.]+)", summary)
+        matches = re.findall(b'([A-Z][A-Za-z ]*): +([\-\d\.]+)', summary)
         if matches:
             return dict([(k, float(v)) for (k, v) in matches])
     return None
@@ -133,12 +136,12 @@ def getLoudness(filename):
 
 def matchLoudness(filename, target_lufs=-18):
     input_loudness = getLoudness(filename)
-    input_lufs = input_loudness['I']
+    input_lufs = input_loudness[b'I']
     gain = target_lufs - input_lufs
     print('Input loudness = %.1f LUFS; Gain to apply = %.1f dB' % (input_lufs, gain))
     output_path = ffmpeg(filename, ['-c:v', 'copy', '-af', 'volume=%.1fdB' % gain])
     output_loudness = getLoudness(output_path)
-    output_lufs = output_loudness['I']
+    output_lufs = output_loudness[b'I']
     print('Output loudness = %.1f LUFS; Error = %.1f dB' % (output_lufs, target_lufs-output_lufs))
     return output_path
 
@@ -153,6 +156,10 @@ def trim(input_path, tstart=0, tstop=None, output_path=None, overwrite=None, cod
     overwrite -- Optionally specify addition of -y or -n flag to ffmpeg
     """
     folder, filename = os.path.split(input_path)
+    if isinstance(tstart, bytes):
+        tstart = tstart.decode()
+    if isinstance(tstop, bytes):
+        tstop = tstop.decode()
     if not isinstance(tstart, str):
         tstart = '%.4f' % tstart
     if tstop and not isinstance(tstop, str):
@@ -178,7 +185,7 @@ def trim(input_path, tstart=0, tstop=None, output_path=None, overwrite=None, cod
         p = Popen(command, cwd=folder if folder else '.')
         stdout, stderr = p.communicate()
         return os.path.join(folder, output_path)
-    except Exception, e:
+    except Exception as e:
         print(e)
         return None 
 
@@ -225,7 +232,7 @@ def concatFileList(concat_path, output_path, overwrite=None):
         p = Popen(command)
         stdout, stderr = p.communicate()
         return output_path
-    except Exception, e:
+    except Exception as e:
         print(e)
         return None         
 
@@ -468,7 +475,7 @@ def writeFilterGraph(filter_script_path, silences, **kwargs):
         f.write(filter_graph)
 
 
-def ffmpegComplexFilter(input_path, filter_script_path, output_path=NUL, run_command=True, overwrite=None):
+def ffmpegComplexFilter(input_path, filter_script_path, output_path=NUL, run_command=True, overwrite=None, fps=30):
     """Prepare and execute (if run_command) ffmpeg command for processing input_path with an
     ffmpeg filter_complex string (filtergraph) in filter_script_path, and save to output_path.
     As this requires re-encoding, video and audio settings are chosen to be compliant with YouTube's
@@ -481,7 +488,7 @@ def ffmpegComplexFilter(input_path, filter_script_path, output_path=NUL, run_com
     overwrite:   Optionally specify addition of -y or -n flag to ffmpeg (useful for unattended scripting).
     """
     header = 'ffmpeg -i "%s"' % filename
-    youtube_video = '-c:v libx264 -crf 20 -bf 2 -flags +cgop -g 15 -pix_fmt yuv420p -movflags +faststart' # -tune stillimage
+    youtube_video = '-c:v libx264 -crf 20 -bf 2 -flags +cgop -g %i -pix_fmt yuv420p -movflags +faststart' % (fps/2) # -tune stillimage
     youtube_audio = '-c:a aac -r:a 48000 -b:a 192k'
     youtube_other = '-strict -2'
     filter_command = '-filter_complex_script "%s" -map [v] -map [a]' % filter_script_path
@@ -513,16 +520,17 @@ if __name__ == '__main__':
     # input_path = "C:\\Users\\russ\\Documents\\Teaching\\PHS3051\\LectureRecordings\\2017\\Lecture3\\ModernOpticsLecture3.trec"
     # input_path = "C:\\Users\\rander\\Documents\\Teaching\\PHS3051Optics\\LectureRecordings\\2017\\Lecture4\\ModernOpticsLecture4.trec"
     # input_path = "C:\\Users\\rander\\Documents\\Teaching\\PHS3051Optics\\LectureRecordings\\2017\\Lecture5\\ModernOpticsLecture5.trec"
-    input_path = "C:\\Users\\rander\\Documents\\Teaching\\PHS3051Optics\\LectureRecordings\\2017\\Lecture6\\ModernOpticsLecture6.trec"
+    input_path = "C:\\Users\\Public\\Documents\\Lightboard\\Record_Layover\\Lightboard-[2017-05-10_13-19-25]-000.mp4"
     suffix = 'scrub'
 
     # Flags
-    overwrite = True
-    run_command = True
-    rescale = True
-    # pan_audio = False
-    pan_audio = 'left'
+    overwrite = False
+    run_command = False
+    rescale = False
+    pan_audio = False
+    # pan_audio = 'left'
     factor = 8
+    fps = 50
     
     # Implementation
     folder, filename = os.path.split(input_path)
@@ -538,7 +546,7 @@ if __name__ == '__main__':
 
         print('\nChecking loudness of file...')
         loudness = getLoudness(filename)
-        input_lufs = loudness['I']
+        input_lufs = loudness[b'I']
         gain = target_lufs - input_lufs
         # Apply gain correction if pan_audio is used (when one stereo channel is silent)
         if pan_audio:
@@ -558,4 +566,4 @@ if __name__ == '__main__':
         print('\nUsing existing filter_complex script....')   
     
     print('\nRequired ffmpeg command:')
-    result = ffmpegComplexFilter(input_path, filter_script_path, output_path, run_command, overwrite)
+    result = ffmpegComplexFilter(input_path, filter_script_path, output_path, run_command, overwrite, fps)
