@@ -1,6 +1,7 @@
 import os
 import re
 from subprocess import Popen, call, PIPE
+import math
 
 NUL = os.devnull
 
@@ -63,7 +64,7 @@ def findSampleRate(log_output):
 def getSampleRate(filename):
     """Runs ffprobe on filename and extracts audio sample rate in Hz."""
     ffprobe_log = ffprobe(filename)
-    return findDuration(ffprobe_log)
+    return findSampleRate(ffprobe_log)
 
 
 def findSilences(log_output):
@@ -253,7 +254,7 @@ def concatSegments(segment_paths, output_path=None, overwrite=None):
     concatFileList(concat_path, output_path, overwrite)
 
 
-def silenceFilterGraph(silences, factor, delay=0.25, audio_rate=44100, hasten_audio=False,
+def silenceFilterGraph(silences, factor, delay=0.25, audio_rate=44100, hasten_audio=None, silent_volume=1.0,
                        v_in='[0:v]', a_in='[0:a]', v_out='[v]', a_out='[a]'):
     """Generate a filtergraph string (for processing with the -filter_complex
     flag of ffmpeg) using the trim and atrim filters to speed up periods in the
@@ -271,8 +272,9 @@ def silenceFilterGraph(silences, factor, delay=0.25, audio_rate=44100, hasten_au
     delay -- to omit from silent intervals when changing speed (default 0.25s)
     audio_rate -- Sample rate of audio input (in Hz, default 44100) used in 
                   asetrate/aresample filters when hasten_audio=True
-    hasten_audio -- Speed up audio during silent segment with asetrate and 
-                    aresample filters (increases pitch)
+    hasten_audio -- None, 'pitch' or 'tempo'. Speed up audio during silent segment by either increasing pitch (with asetrate and 
+                    aresample filters) or tempo (with atempo filter).
+    silent_volume -- scale the volume during silent segments (default 1.0; no scaling)
     """
     # Omit silences at the start/end of the file
     if 'silence_end' not in silences[-1]:
@@ -321,12 +323,21 @@ def silenceFilterGraph(silences, factor, delay=0.25, audio_rate=44100, hasten_au
 
         # Trim video before this silence (regular speed)
         astrings.append('%satrim=%s:%s,asetpts=PTS-STARTPTS[a%i];' % (a_in, t0, ti, (2*i-1)))
-        if hasten_audio:
+        if hasten_audio == 'pitch':
             # Speed up audio during silent segment with asetrate and aresample filters (increases pitch)
-            astrings.append('%satrim=%s:%s,asetpts=PTS-STARTPTS,asetrate=%i,aresample=%i,volume=0.0[a%i];' % (a_in, ti, tf, (factor*audio_rate), audio_rate, (2*i)))
+            astrings.append('%satrim=%s:%s,asetpts=PTS-STARTPTS,asetrate=%i,aresample=%i,volume=%.3f[a%i];' % (a_in, ti, tf, (factor*audio_rate), audio_rate, silent_volume, (2*i)))
+        elif hasten_audio == 'tempo':
+            # speed up audio during silent segment with atempo (increases tempo)
+            q = math.log(factor, 2)
+            tempos = ['atempo=2.0']*int(q)
+            if q != int(q):
+                tempos.append('atempo=%.3f/%d'%(factor, 2**int(q)))                
+            tempo_str = ','.join(tempos)
+            
+            astrings.append('%satrim=%s:%s,%s,volume=%.3f[a%i];' % (a_in, ti, tf, tempo_str, silent_volume, (2*i)))
         else:
             # Use first 1/factor samples of silence for audio (no pitch increase)
-            astrings.append('%satrim=%s:%s,asetpts=PTS-STARTPTS[a%i];' % (a_in, ti, ta, (2*i)))
+            astrings.append('%satrim=%s:%s,asetpts=PTS-STARTPTS,volume=%.3f[a%i];' % (a_in, ti, ta, silent_volume, (2*i)))
 
         # Append these streams to the concat filter input
         concat_string += '[v%i][a%i][v%i][a%i]' % ((2*i-1), (2*i-1), (2*i), (2*i))
@@ -401,7 +412,7 @@ def panGainAudioGraph(a_in='[0:a]', duplicate_ch='left', gain=0, a_out='[a]'):
         return None
 
 
-def generateFilterGraph(silences, factor, delay=0.25, rescale=True, pan_audio='left', gain=0, audio_rate=44100, hasten_audio=False):
+def generateFilterGraph(silences, factor, delay=0.25, rescale=True, pan_audio='left', gain=0, audio_rate=44100, hasten_audio=None, silent_volume=1.0):
     """Generate a filtergraph string (for processing with the -filter_complex
     flag of ffmpeg) using the trim and atrim filters to speed up periods in the
     video designated by a list of silences (dictonaries with keys:
@@ -423,10 +434,11 @@ def generateFilterGraph(silences, factor, delay=0.25, rescale=True, pan_audio='l
     gain -- in dB to apply when pan_audio is 'left' or 'right'
     audio_rate -- Sample rate of audio input (in Hz, default 44100) used in 
                   asetrate/aresample filters when hasten_audio=True
-    hasten_audio -- Speed up audio during silent segment with asetrate and 
-                    aresample filters (increases pitch)
+    hasten_audio -- None, 'pitch' or 'tempo'. Speed up audio during silent segment by either increasing pitch (with asetrate and 
+                    aresample filters) or tempo (with atempo filter).
+    silent_volume -- scale the volume during silent segments (default 1.0; no scaling)
     """
-    filter_graph = silenceFilterGraph(silences, factor, audio_rate=audio_rate,
+    filter_graph = silenceFilterGraph(silences, factor, audio_rate=audio_rate, hasten_audio=hasten_audio, silent_volume=silent_volume,
                         v_out='[vn]' if rescale else '[v]', a_out='[an]' if gain or pan_audio else '[a]')
     if rescale:
         filter_graph += '\n' + resizeFilterGraph(v_in='[vn]')
@@ -460,8 +472,9 @@ def writeFilterGraph(filter_script_path, silences, **kwargs):
     gain -- in dB to apply when pan_audio is 'left' or 'right'
     audio_rate -- Sample rate of audio input (in Hz, default 44100) used in 
                   asetrate/aresample filters when hasten_audio=True
-    hasten_audio -- Speed up audio during silent segment with asetrate and 
-                    aresample filters (increases pitch)
+    hasten_audio -- None, 'pitch' or 'tempo'. Speed up audio during silent segment by either increasing pitch (with asetrate and 
+                    aresample filters) or tempo (with atempo filter).
+    silent_volume -- scale the volume during silent segments (default 1.0; no scaling)
     """
     filter_graph = generateFilterGraph(silences, **kwargs)
     with open(filter_script_path, 'w') as f:
@@ -523,6 +536,7 @@ if __name__ == '__main__':
     # pan_audio = False
     pan_audio = 'left'
     factor = 8
+    hasten_audio = 'tempo'
     
     # Implementation
     folder, filename = os.path.split(input_path)
@@ -535,6 +549,7 @@ if __name__ == '__main__':
         print('============ Processing %s ==========' % filename)
         print('\nGetting audio sample rate...')
         input_sample_rate = getSampleRate(filename)
+        print("Measured sample rate = %d Hz"%input_sample_rate)
 
         print('\nChecking loudness of file...')
         loudness = getLoudness(filename)
@@ -553,7 +568,7 @@ if __name__ == '__main__':
         print('Found %i silences of average duration %.1f seconds.' % (len(silences), mean_duration))
 
         print('\nGenerating ffmpeg filter_complex script...')
-        writeFilterGraph(filter_script_path, silences, factor=factor, audio_rate=input_sample_rate, pan_audio=pan_audio, gain=gain, rescale=rescale)
+        writeFilterGraph(filter_script_path, silences, factor=factor, audio_rate=input_sample_rate, pan_audio=pan_audio, gain=gain, rescale=rescale, hasten_audio=hasten_audio)
     else:
         print('\nUsing existing filter_complex script....')   
     
