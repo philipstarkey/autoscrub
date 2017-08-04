@@ -3,11 +3,13 @@ import re
 from subprocess import Popen, call, PIPE
 import math
 
+import six
+
 NUL = os.devnull
 
 def hhmmssd_to_seconds(s):
     """Convert a '[hh:]mm:ss[.d]' string to seconds. The hours and decimal seconds are optional."""
-    assert isinstance(s, str)
+    assert isinstance(s, six.string_types)
     return reduce(lambda t60, x: t60 * 60 + x, map(float, s.split(':')))
 
 
@@ -154,9 +156,9 @@ def trim(input_path, tstart=0, tstop=None, output_path=None, overwrite=None, cod
     overwrite -- Optionally specify addition of -y or -n flag to ffmpeg
     """
     folder, filename = os.path.split(input_path)
-    if not isinstance(tstart, str):
+    if not isinstance(tstart, six.string_types):
         tstart = '%.4f' % tstart
-    if tstop and not isinstance(tstop, str):
+    if tstop and not isinstance(tstop, six.string_types):
         tstop = '%.4f' % tstop
     command = ['ffmpeg', '-i', filename]
     if hhmmssd_to_seconds(tstart) > 0:
@@ -397,13 +399,13 @@ def panGainAudioGraph(a_in='[0:a]', duplicate_ch='left', gain=0, a_out='[a]'):
     head = a_in
     tail = a_out + ';'
     astrings = []
-    if isinstance(duplicate_ch, str):
+    if isinstance(duplicate_ch, six.string_types):
         if duplicate_ch.lower() == 'left':
             # Duplicate left channel of input on right channel
             astrings.append('pan=stereo|c0=c0|c1=c0')
         if duplicate_ch.lower() == 'right':
             # Duplicate right channel of input on left channel
-            astringsde.append('pan=stereo|c0=c1|c1=c1')
+            astrings.append('pan=stereo|c0=c1|c1=c1')
     if gain:
         astrings.append('volume=%.1fdB' % gain)
     if len(astrings):
@@ -438,7 +440,7 @@ def generateFilterGraph(silences, factor, delay=0.25, rescale=True, pan_audio='l
                     aresample filters) or tempo (with atempo filter).
     silent_volume -- scale the volume during silent segments (default 1.0; no scaling)
     """
-    filter_graph = silenceFilterGraph(silences, factor, audio_rate=audio_rate, hasten_audio=hasten_audio, silent_volume=silent_volume,
+    filter_graph = silenceFilterGraph(silences, factor, audio_rate=audio_rate, hasten_audio=hasten_audio, silent_volume=silent_volume, delay=delay,
                         v_out='[vn]' if rescale else '[v]', a_out='[an]' if gain or pan_audio else '[a]')
     if rescale:
         filter_graph += '\n' + resizeFilterGraph(v_in='[vn]')
@@ -493,7 +495,7 @@ def ffmpegComplexFilter(input_path, filter_script_path, output_path=NUL, run_com
     run_command: If False, simply prepare and return the command for debugging or later use.
     overwrite:   Optionally specify addition of -y or -n flag to ffmpeg (useful for unattended scripting).
     """
-    header = 'ffmpeg -i "%s"' % filename
+    header = 'ffmpeg -i "%s"' % input_path
     youtube_video = '-c:v libx264 -crf 20 -bf 2 -flags +cgop -g 15 -pix_fmt yuv420p -movflags +faststart' # -tune stillimage
     youtube_audio = '-c:a aac -r:a 48000 -b:a 192k'
     youtube_other = '-strict -2'
