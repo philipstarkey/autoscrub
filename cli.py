@@ -33,6 +33,44 @@ _option__start = make_click_dict('--start', default=0, type=float, help='Content
 _option__stop = make_click_dict('--stop', type=float, help='Content after this time is removed', show_default=True)
 _option__codec = make_click_dict('--re-encode', nargs=1, type=str, metavar='CODEC', help='Re-encode the file with the codec specified', show_default=True)
 
+def create_filtergraph(input, filter_graph_path, speed, rescale, target_lufs, target_threshold, pan_audio, hasten_audio, silence_duration, delay, silent_volume):    
+    folder, filename = os.path.split(input)
+    click.echo('============ Processing %s ==========' % filename)
+    
+    # determine audio sample rate
+    click.echo('\nGetting audio sample rate...')
+    input_sample_rate = autoscrub.getSampleRate(input)
+    click.echo("Measured sample rate = %d Hz"%input_sample_rate)
+
+    click.echo('\nChecking loudness of file...')
+    loudness = autoscrub.getLoudness(input)
+    input_lufs = loudness['I']
+    
+    # Calculate gain
+    gain = target_lufs - input_lufs
+    
+    # Apply gain correction if pan_audio is used (when one stereo channel is silent)
+    if pan_audio in ['left', 'right']:
+        click.echo('Reducing gain by 3dB due to audio pan')
+        gain -= 3
+    
+    # calculate input_threshold
+    input_threshold_dB = input_lufs + target_threshold - target_lufs
+    
+    # print audio data to terminal
+    click.echo('Measured loudness = %.1f LUFS; Silence threshold = %.1f dB; Gain to apply = %.1f dB' % (input_lufs, input_threshold_dB, gain))
+
+    # find silent segments
+    click.echo('\nSearching for silence...')
+    silences = autoscrub.getSilences(input, input_threshold_dB, silence_duration, False)
+    durations = [s['silence_duration'] for s in silences if 'silence_duration' in s]
+    mean_duration = sum(durations)/len(durations)
+    click.echo('Found %i silences of average duration %.1f seconds.' % (len(silences), mean_duration))
+
+    # Generate the filtergraph
+    click.echo('\nGenerating ffmpeg filter_complex script...')
+    autoscrub.writeFilterGraph(filter_graph_path, silences, factor=speed, audio_rate=input_sample_rate, pan_audio=pan_audio, gain=gain, rescale=rescale, hasten_audio=hasten_audio, delay=delay, silent_volume=silent_volume)
+
 @click.group()
 def cli():
     """Welcome to autoscrub!
@@ -83,65 +121,31 @@ def autoprocess(input, output, speed, rescale, target_lufs, target_threshold, pa
     # adjust hasten_audio if 'trunc'
     if hasten_audio == 'trunc':
         hasten_audio = None
-    
-    folder, filename = os.path.split(input)
-    
+        
     # Make a temporary file for the filterscript
-    handle, filter_script_path = tempfile.mkstemp()
+    handle, filter_graph_path = tempfile.mkstemp()
     # Python returns an open handle which we don't want, so close it
     os.close(handle)
 
-    click.echo('============ Processing %s ==========' % filename)
-    
-    # determine audio sample rate
-    click.echo('\nGetting audio sample rate...')
-    input_sample_rate = autoscrub.getSampleRate(input)
-    click.echo("Measured sample rate = %d Hz"%input_sample_rate)
-
-    click.echo('\nChecking loudness of file...')
-    loudness = autoscrub.getLoudness(input)
-    input_lufs = loudness['I']
-    
-    # Calculate gain
-    gain = target_lufs - input_lufs
-    
-    # Apply gain correction if pan_audio is used (when one stereo channel is silent)
-    if pan_audio in ['left', 'right']:
-        click.echo('Reducing gain by 3dB due to audio pan')
-        gain -= 3
-    
-    # calculate input_threshold
-    input_threshold_dB = input_lufs + target_threshold - target_lufs
-    
-    # print audio data to terminal
-    click.echo('Measured loudness = %.1f LUFS; Silence threshold = %.1f dB; Gain to apply = %.1f dB' % (input_lufs, input_threshold_dB, gain))
-
-    # find silent segments
-    click.echo('\nSearching for silence...')
-    silences = autoscrub.getSilences(input, input_threshold_dB, silence_duration)
-    durations = [s['silence_duration'] for s in silences if 'silence_duration' in s]
-    mean_duration = sum(durations)/len(durations)
-    click.echo('Found %i silences of average duration %.1f seconds.' % (len(silences), mean_duration))
-
-    # Generate the filtergraph
-    click.echo('\nGenerating ffmpeg filter_complex script...')
-    autoscrub.writeFilterGraph(filter_script_path, silences, factor=speed, audio_rate=input_sample_rate, pan_audio=pan_audio, gain=gain, rescale=rescale, hasten_audio=hasten_audio, delay=delay, silent_volume=silent_volume)
+    create_filtergraph(input, filter_graph_path, speed, rescale, target_lufs, target_threshold, pan_audio, hasten_audio, silence_duration, delay, silent_volume)
     
     # Process the video file using ffmpeg and the filtergraph
-    result = autoscrub.ffmpegComplexFilter(input, filter_script_path, output, run_command=True, overwrite=True)
+    result = autoscrub.ffmpegComplexFilter(input, filter_graph_path, output, run_command=True, overwrite=True)
         
     # delete the filtergraph temporary file unless we are debugging
     if not debug:
         # delete the temporary file
-        os.remove(filter_script_path)
+        os.remove(filter_graph_path)
     else:
-        click.echo('For debugging purposes, the filter script is located at: {filter_script}'.format(filter_script=filter_script_path))
+        click.echo('For debugging purposes, the filter script is located at: {filter_graph_path}'.format(filter_graph_path=filter_graph_path))
 
 @cli.command(name='loudness-adjust')
 @click.option(*_option__target_lufs[0], **_option__target_lufs[1])
 @click.argument('input', type=click.Path(exists=True))
 @click.argument('output', type=click.Path(exists=False))
 def match_loudness(input, output, target_lufs):
+    """Adjusts the loudness of the input file"""
+    
     # convert input/output paths to absolute paths
     input = os.path.abspath(input)
     output = os.path.abspath(output)
@@ -151,6 +155,8 @@ def match_loudness(input, output, target_lufs):
 @cli.command(name='display-video-properties')
 @click.argument('input', type=click.Path(exists=True))
 def get_properties(input):
+    """Displays properties about the input file"""
+    
     # convert input/output paths to absolute paths
     input = os.path.abspath(input)
     
@@ -169,6 +175,8 @@ def get_properties(input):
 @click.option(*_option__target_threshold[0], **_option__target_threshold[1])
 @click.argument('input', type=click.Path(exists=True))
 def get_silences(input, silence_duration, target_threshold):
+    """Displays a table of detected silent segments"""
+    
     # convert input/output paths to absolute paths
     input = os.path.abspath(input)
     
@@ -191,6 +199,8 @@ def get_silences(input, silence_duration, target_threshold):
 @click.argument('input', type=click.Path(exists=True))
 @click.argument('output', type=click.Path(exists=False))
 def trim(input, output, start, stop, re_encode):
+    """removes unwanted content from the start and end of the input file"""
+    
     # convert input/output paths to absolute paths
     input = os.path.abspath(input)
     output = os.path.abspath(output)
@@ -208,12 +218,66 @@ def trim(input, output, start, stop, re_encode):
 # no because that syntax is silly with click. So we'll need to define
 # common parameters for autoprocess and make_filtergraph and have them at the same level (aka both decorated by @cli.command()
 @cli.command(name='make-filtergraph')
-def make_filtergraph():
-    pass
+@click.option(*_option__silence_duration[0], **_option__silence_duration[1])
+@click.option(*_option__hasten_audio[0],     **_option__hasten_audio[1])
+@click.option(*_option__target_lufs[0],      **_option__target_lufs[1])
+@click.option(*_option__pan_audio[0],        **_option__pan_audio[1])
+@click.option(*_option__rescale[0],          **_option__rescale[1])
+@click.option(*_option__speed[0],            **_option__speed[1])
+@click.option(*_option__target_threshold[0], **_option__target_threshold[1])
+@click.option(*_option__silent_volume[0],    **_option__silent_volume[1])
+@click.option(*_option__delay[0],            **_option__delay[1])
+@click.argument('input', type=click.Path(exists=True))
+def make_filtergraph(input, speed, rescale, target_lufs, target_threshold, pan_audio, hasten_audio, silence_duration, delay, silent_volume):
+    """Generates a filter-graph file for use with ffmpeg. 
+    
+    \b
+    This command is useful if you want to manually edit the filter-graph file before processing your video."""
+    # convert input/output paths to absolute paths
+    input = os.path.abspath(input)
+    
+    # ensure that there will always be some part of a silent segment that experiences a speedup
+    if not (2*delay < silence_duration):
+        click.echo("ERROR: The value for delay must be less than half of the silence_duration specified")
+        return
+        
+    # determine the path of the filter graph file based on the name of the input file
+    folder, filename = os.path.split(input)
+    filter_graph_path = os.path.join(folder, '.'.join(filename.split('.')[:-1])+'.filter-graph')
+    
+    # check if output file exists and prompt
+    if os.path.exists(filter_graph_path):
+        click.confirm('The specified filtergraph output file [{output}] already exists. Do you want to overrite?'.format(output=filter_graph_path), abort=True)
+    
+    # adjust hasten_audio if 'trunc'
+    if hasten_audio == 'trunc':
+        hasten_audio = None
+    
+    create_filtergraph(input, filter_graph_path, speed, rescale, target_lufs, target_threshold, pan_audio, hasten_audio, silence_duration, delay, silent_volume)
     
 @cli.command(name='process-filtergraph')
-def use_filtergraph():
-    pass
+@click.argument('input', type=click.Path(exists=True))
+@click.argument('output', type=click.Path(exists=False))
+def use_filtergraph(input, output):
+    """Processes a video file using the filter-graph file created by the autoscrub make-filtergraph command"""
+
+    # convert input/output paths to absolute paths
+    input = os.path.abspath(input)
+    output = os.path.abspath(output)
+    
+    # determine the path of the filter script file based on the name of the input file
+    folder, filename = os.path.split(input)
+    filter_graph_path = os.path.join(folder, '.'.join(filename.split('.')[:-1])+'.filter-graph')
+    
+    if not os.path.exists(filter_graph_path):
+        raise Exception('Could not fnd filter-graph file for the specified input video (if you are unsure of what a filter-graph file is, consider using "autoscrub autoprocess"). Ensure that {path} exists. This file can be generated by using "autoscrub make-filtergraph".')
+    
+    # check if output file exists and prompt
+    if os.path.exists(output):
+        click.confirm('The specified output file [{output}] already exists. Do you want to overrite?'.format(output=output), abort=True)
+    
+    # Process the video file using ffmpeg and the filtergraph
+    result = autoscrub.ffmpegComplexFilter(input, filter_graph_path, output, run_command=True, overwrite=True)
     
     
 if __name__ == "__main__":
