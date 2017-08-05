@@ -134,12 +134,12 @@ def getLoudness(filename):
     return findLoudness(stderr)
 
 
-def matchLoudness(filename, target_lufs=-18):
+def matchLoudness(filename, target_lufs=-18, output_path=None):
     input_loudness = getLoudness(filename)
     input_lufs = input_loudness['I']
     gain = target_lufs - input_lufs
     print('Input loudness = %.1f LUFS; Gain to apply = %.1f dB' % (input_lufs, gain))
-    output_path = ffmpeg(filename, ['-c:v', 'copy', '-af', 'volume=%.1fdB' % gain])
+    output_path = ffmpeg(filename, ['-c:v', 'copy', '-af', 'volume=%.1fdB' % gain], output_path)
     output_loudness = getLoudness(output_path)
     output_lufs = output_loudness['I']
     print('Output loudness = %.1f LUFS; Error = %.1f dB' % (output_lufs, target_lufs-output_lufs))
