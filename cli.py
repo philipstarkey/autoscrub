@@ -3,11 +3,35 @@ import autoscrub
 import tempfile
 import os
 
+def format_nice_time(t_in_seconds):
+    t_in_seconds = float(t_in_seconds)
+    
+    # handle negative time
+    s = ''
+    if t_in_seconds < 0:
+        s = '-'
+        t_in_seconds *= -1
+
+    hours, remainder = divmod(t_in_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    s += '{:02d}:{:02d}:{:06.3f}'.format(int(hours), int(minutes), seconds)
+    return s
+
 def make_click_dict(*args, **kwargs):    
     return (args, kwargs)
 
+_option__silence_duration = make_click_dict('--silence-duration', '-d', default=2.0, type=float, help='The minimum duration of continuous silence (in seconds) required to trigger speed up of that segment.', show_default=True)
+_option__hasten_audio = make_click_dict('--hasten-audio', '-h', default='tempo', type=click.Choice(['trunc', 'pitch', 'tempo']), help="The method of handling audio during the speed up of silent segments.", show_default=True)
 _option__target_lufs = make_click_dict('--target-lufs', '-l', default=-18.0, type=float, help='The target LUFS for the output audio', show_default=True)
-
+_option__pan_audio = make_click_dict('--pan-audio', '-p', type=click.Choice(['left', 'right']), help="Copies the specified audio channel (left|right) to both audio channels.", show_default=True)
+_option__rescale = make_click_dict('--rescale', '-r', nargs=2, type=int, metavar="WIDTH HEIGHT", help='rescale the input video file to the resolution specified  [usage: -r 1920 1080]')
+_option__speed = make_click_dict('--speed', '-s', default=8, type=float, help='The factor by which to speed up the video during silent segments', show_default=True)
+_option__target_threshold = make_click_dict('--target-threshold', '-t', default=-18.0, type=float, help='The audio threshold for detecting silent segments in dB', show_default=True)
+_option__silent_volume = make_click_dict('--silent-volume', '-v', default=1.0, type=float, help='The factor to scale the audio volume during silent segments', show_default=True)
+_option__delay = make_click_dict('--delay', default=0.25, type=float, help='The length of time (in seconds) to delay the start of the speed up of a silent segment. This also ends the speedup early, by the same amount, and must satisfy the condition 2*delay < silence-duration', show_default=True)
+_option__start = make_click_dict('--start', default=0, type=float, help='Content before this time is removed', show_default=True)
+_option__stop = make_click_dict('--stop', type=float, help='Content after this time is removed', show_default=True)
+_option__codec = make_click_dict('--re-encode', nargs=1, type=str, metavar='CODEC', help='Re-encode the file with the codec specified', show_default=True)
 
 @click.group()
 def cli():
@@ -28,16 +52,15 @@ def cli():
     
 
 @cli.command()
-@click.option('--silence-duration', '-d', default=2.0, type=float, help='The minimum duration of continuous silence (in seconds) required to trigger speed up of that segment.', show_default=True)
-@click.option('--hasten-audio', '-h', default='tempo', type=click.Choice(['trunc', 'pitch', 'tempo']), help="The method of handling audio during the speed up of silent segments.", show_default=True)
-@click.option('--target-lufs', '-l', default=-18.0, type=float, help='The target LUFS for the output audio', show_default=True)
-# @click.option(*_option__target_lufs[0], **_option__target_lufs[1])
-@click.option('--pan-audio', '-p', type=click.Choice(['left', 'right']), help="Copies the specified audio channel (left|right) to both audio channels.", show_default=True)
-@click.option('--rescale', '-r', nargs=2, type=int, metavar="WIDTH HEIGHT", help='rescale the input video file to the resolution specified  [usage: -r 1920 1080]')
-@click.option('--speed', '-s', default=8, type=float, help='The factor by which to speed up the video during silent segments', show_default=True)
-@click.option('--target-threshold', '-t', default=-18.0, type=float, help='The audio threshold for detecting silent segments in dB', show_default=True)
-@click.option('--silent-volume', '-v', default=1.0, type=float, help='The factor to scale the audio volume during silent segments', show_default=True)
-@click.option('--delay', default=0.25, type=float, help='The length of time (in seconds) to delay the start of the speed up of a silent segment. This also ends the speedup early, by the same amount, and must satisfy the condition 2*delay < silence-duration', show_default=True)
+@click.option(*_option__silence_duration[0], **_option__silence_duration[1])
+@click.option(*_option__hasten_audio[0],     **_option__hasten_audio[1])
+@click.option(*_option__target_lufs[0],      **_option__target_lufs[1])
+@click.option(*_option__pan_audio[0],        **_option__pan_audio[1])
+@click.option(*_option__rescale[0],          **_option__rescale[1])
+@click.option(*_option__speed[0],            **_option__speed[1])
+@click.option(*_option__target_threshold[0], **_option__target_threshold[1])
+@click.option(*_option__silent_volume[0],    **_option__silent_volume[1])
+@click.option(*_option__delay[0],            **_option__delay[1])
 @click.option('--debug', help="Retains the generated filtergraph file for inspection", is_flag=True)
 @click.argument('input', type=click.Path(exists=True))
 @click.argument('output', type=click.Path(exists=False))
@@ -141,13 +164,45 @@ def get_properties(input):
     click.echo("Audio sample rate: {}Hz".format(samplerate))
     click.echo("Loudness: {}LUFS".format(loudness['I']))
     
-@cli.command(name='indentify-silences')
-def get_silences():
-    pass
+@cli.command(name='identify-silences')
+@click.option(*_option__silence_duration[0], **_option__silence_duration[1])
+@click.option(*_option__target_threshold[0], **_option__target_threshold[1])
+@click.argument('input', type=click.Path(exists=True))
+def get_silences(input, silence_duration, target_threshold):
+    # convert input/output paths to absolute paths
+    input = os.path.abspath(input)
+    
+    # output a message before beginning
+    click.echo("Scanning for silent segments (this may take some time)...")
+    
+    silences = autoscrub.getSilences(input, target_threshold, silence_duration, save_silences=False)
+    
+    click.echo("#\tstart   \tend     \tduration")
+    for i, silence in enumerate(silences):
+        ti = format_nice_time(silence['silence_start'])
+        tf = format_nice_time(silence['silence_end']) if 'silence_end' in silence else ''
+        dt = format_nice_time(silence['silence_duration']) if 'silence_duration' in silence else ''
+        click.echo("{num}\t{start}\t{end}\t{duration}".format(num=i, start=ti, end=tf, duration=dt))
     
 @cli.command()
-def trim():
-    pass
+@click.option(*_option__start[0], **_option__start[1])
+@click.option(*_option__stop[0],  **_option__stop[1])
+@click.option(*_option__codec[0], **_option__codec[1])
+@click.argument('input', type=click.Path(exists=True))
+@click.argument('output', type=click.Path(exists=False))
+def trim(input, output, start, stop, re_encode):
+    # convert input/output paths to absolute paths
+    input = os.path.abspath(input)
+    output = os.path.abspath(output)
+    
+    # check if output file exists and prompt
+    if os.path.exists(output):
+        click.confirm('The specified output file [{output}] already exists. Do you want to overrite?'.format(output=output), abort=True)
+        
+    if re_encode is None:
+        re_encode = 'copy'
+        
+    autoscrub.trim(input, start, stop, output, True, re_encode)
     
 # these two should be subcommands of autoprocess?
 # no because that syntax is silly with click. So we'll need to define
