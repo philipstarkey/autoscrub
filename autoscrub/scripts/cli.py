@@ -283,5 +283,5 @@ def use_filtergraph(input, output):
     result = autoscrub.ffmpegComplexFilter(input, filter_graph_path, output, run_command=True, overwrite=True)
     
     
-if __name__ == "__main__":
-    cli(prog_name='autoscrub')
+
+cli(prog_name='autoscrub')
