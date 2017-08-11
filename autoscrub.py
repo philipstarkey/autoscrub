@@ -76,7 +76,7 @@ def findSilences(log_output):
     if matches:
         return [dict(matches[i:i + 3]) for i in xrange(0, len(matches), 3)]
     else:
-        return None
+        return []
 
 
 def getSilences(filename, input_threshold_dB=-18.0, silence_duration=2.0, save_silences=True):
@@ -279,10 +279,12 @@ def silenceFilterGraph(silences, factor, delay=0.25, audio_rate=44100, hasten_au
     silent_volume -- scale the volume during silent segments (default 1.0; no scaling)
     """
     # Omit silences at the start/end of the file
-    if 'silence_end' not in silences[-1]:
-        silences = silences[:-1]
-    if silences[0]['silence_start'] <= 0.:
-        silences = silences[1:]    
+    if len(silences) > 0:
+        if 'silence_end' not in silences[-1]:
+            silences = silences[:-1]
+    if len(silences) > 0:
+        if silences[0]['silence_start'] <= 0.:
+            silences = silences[1:]    
 
     # Timestamp of end of most recently processed segment
     tf_last = 0
