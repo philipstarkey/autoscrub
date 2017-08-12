@@ -80,17 +80,23 @@ def findSilences(log_output):
 
 
 def getSilences(filename, input_threshold_dB=-18.0, silence_duration=2.0, save_silences=True):
-    """Runs the ffmpeg filter silencedetect with specified settings and returns a list
-    of silence dictionaries, with keys:
+    """Runs the ffmpeg filter silencedetect with specified settings and returns a list of silence dictionaries, with keys:
 
-    silence_start: the timestamp of the detected silent interval in seconds
-    silence_end:   the timestamp of the detected silent interval in seconds
-    silence_duration:  duration of the silent interval in seconds
+        silence_start: the timestamp of the detected silent interval in seconds
+        silence_end:   the timestamp of the detected silent interval in seconds
+        silence_duration:  duration of the silent interval in seconds
 
-    Keyword arguments:
-    input_threshold -- instantaneous level (in dB) to detect silences with (default -18)
-    silence_duration -- seconds for which level mustn't exceed threshold to declare silence (default 2)
-    save_silences -- print the above timestamps to CSV file (default = True)
+    Arguments:
+        filename: the path to the video file to examine
+    
+    Keyword Arguments:
+        input_threshold: instantaneous level (in dB) to detect silences with 
+                         (default -18)
+                         
+        silence_duration: seconds for which level mustn't exceed threshold to 
+                          declare silence (default 2)
+        
+        save_silences: print the above timestamps to CSV file (default = True)
     """
     command = 'ffmpeg -i "%s" -af silencedetect=n=%.1fdB:d=%s -f null %s' % (filename, input_threshold_dB, silence_duration, NUL)
     p = Popen(command, stdout=PIPE, stderr=PIPE)
@@ -149,11 +155,18 @@ def matchLoudness(filename, target_lufs=-18, output_path=None):
 def trim(input_path, tstart=0, tstop=None, output_path=None, overwrite=None, codec='copy', output_type=None):
     """Extract contents of input_path between tstart and tstop.
     
-    Keyword arguments:
-    tstart -- A integer/float in seconds, or a '[hh:]mm:ss[.d]' string (default 0)
-    tstop -- A integer/float in seconds, or a '[hh:]mm:ss[.d]' string (default None)
-    output_path -- Defaults to appending '_trimmed' to input_path
-    overwrite -- Optionally specify addition of -y or -n flag to ffmpeg
+    Arguments:
+        input_path: The path to the video file to process
+    
+    Keyword Arguments:
+        tstart: A integer/float in seconds, or a '[hh:]mm:ss[.d]' string    
+                (default 0)
+        
+        tstop: A integer/float in seconds, or a '[hh:]mm:ss[.d]' string 
+               (default None)
+        output_path: Defaults to appending '_trimmed' to input_path
+        
+        overwrite: Optionally specify addition of -y or -n flag to ffmpeg
     """
     folder, filename = os.path.split(input_path)
     if not isinstance(tstart, six.string_types):
@@ -267,16 +280,22 @@ def silenceFilterGraph(silences, factor, delay=0.25, audio_rate=44100, hasten_au
     silence_duration:  duration of the silent interval in seconds
     
     Arguments:
-    silences -- A list of silence dictionaries generated from getSilences
-    factor -- to speed up video during (a subset of) each silent interval
+        silences: A list of silence dictionaries generated from getSilences
+        
+        factor: to speed up video during (a subset of) each silent interval
 
     Keyword arguments:
-    delay -- to omit from silent intervals when changing speed (default 0.25s)
-    audio_rate -- Sample rate of audio input (in Hz, default 44100) used in 
-                  asetrate/aresample filters when hasten_audio=True
-    hasten_audio -- None, 'pitch' or 'tempo'. Speed up audio during silent segment by either increasing pitch (with asetrate and 
-                    aresample filters) or tempo (with atempo filter).
-    silent_volume -- scale the volume during silent segments (default 1.0; no scaling)
+        delay: to omit from silent intervals when changing speed (default 0.25s)
+        
+        audio_rate: Sample rate of audio input (in Hz, default 44100) used in 
+                    asetrate/aresample filters when hasten_audio=True
+                    
+        hasten_audio: None, 'pitch' or 'tempo'. Speed up audio during silent
+                      segment by either increasing pitch (with asetrate and 
+                      aresample filters) or tempo (with atempo filter).
+                      
+        silent_volume: scale the volume during silent segments (default 1.0;
+                       no scaling)
     """
     # Omit silences at the start/end of the file
     if len(silences) > 0:
@@ -365,15 +384,20 @@ def resizeFilterGraph(v_in='[0:v]', width=1920, height=1080, pad=True,
     for width x height display, with optional padding.
     
     Keyword arguments:
-    v_in -- Named input video stream of the form '[0:v]', '[v1]', etc.
-            (default '[0:v]')
-    width -- of display on which the output stream must fit (default 1920)
-    height -- of display on which the output stream must fit (default 1080)
-    pad -- add letter- or pillar-boxes to the output as required to fill 
-           width x height 
-    mode -- argument of ffmpeg scale filter (default 'decrease')
-    v_out -- Named output video stream of the form '[v]', '[vout]', etc.
-            (default '[v]')
+        v_in: Named input video stream of the form '[0:v]', '[v1]', etc.
+              (default '[0:v]')
+                
+        width: of display on which the output stream must fit (default 1920)
+        
+        height: of display on which the output stream must fit (default 1080)
+        
+        pad: add letter- or pillar-boxes to the output as required to fill 
+             width x height 
+               
+        mode: argument of ffmpeg scale filter (default 'decrease')
+        
+        v_out: Named output video stream of the form '[v]', '[vout]', etc.
+              (default '[v]')
     """
     vstrings = []
     v_scaled = '[scaled]' if pad else v_out
@@ -389,14 +413,17 @@ def panGainAudioGraph(a_in='[0:a]', duplicate_ch='left', gain=0, a_out='[a]'):
     one stereo channel to another, and optionally change the volume by gain. 
 
     Keyword arguments:
-    a_in -- Named input audio stream of the form '[0:a]', '[a1]', etc.
-            (default '[0:a]')
-    duplicate_ch -- 'left', 'right', or None/False specify whether to
-            duplicate a stereo channel of input audio stream 
-            (default 'left')
-    gain -- to apply (in dB) to the audio stream using the volume filter 
-    a_out -- Named output audio stream of the form '[a]', '[aout]', etc.
-            (default '[a]')
+        a_in: Named input audio stream of the form '[0:a]', '[a1]', etc.
+              default '[0:a]')
+              
+        duplicate_ch: 'left', 'right', or None/False specify whether to
+                      duplicate a stereo channel of input audio stream 
+                      (default 'left')
+                      
+        gain: to apply (in dB) to the audio stream using the volume filter 
+        
+        a_out: Named output audio stream of the form '[a]', '[aout]', etc.
+               (default '[a]')
     """
     head = a_in
     tail = a_out + ';'
@@ -426,21 +453,30 @@ def generateFilterGraph(silences, factor, delay=0.25, rescale=True, pan_audio='l
     silence_duration:  duration of the silent interval in seconds
     
     Arguments:
-    silences -- A list of silence dictionaries generated from getSilences
-    factor -- to speed up video during (a subset of) each silent interval
+        silences: A list of silence dictionaries generated from getSilences
+        
+        factor: to speed up video during (a subset of) each silent interval
 
     Keyword arguments:
-    delay -- to omit from silent intervals when changing speed (default 0.25s)
-    rescale -- Scale and pad the video (pillar- or letter-box as required) for
-               1920 x 1080 display (default True)
-    pan_audio -- 'left', 'right', or None/False specify whether to duplicate a
-                 stereo channel of input audio stream (default 'left')
-    gain -- in dB to apply when pan_audio is 'left' or 'right'
-    audio_rate -- Sample rate of audio input (in Hz, default 44100) used in 
-                  asetrate/aresample filters when hasten_audio=True
-    hasten_audio -- None, 'pitch' or 'tempo'. Speed up audio during silent segment by either increasing pitch (with asetrate and 
-                    aresample filters) or tempo (with atempo filter).
-    silent_volume -- scale the volume during silent segments (default 1.0; no scaling)
+        delay: to omit from silent intervals when changing speed (default 0.25s)
+        
+        rescale: Scale and pad the video (pillar- or letter-box as required) for
+                 1920 x 1080 display (default True)
+                 
+        pan_audio: 'left', 'right', or None/False specify whether to duplicate a
+                    stereo channel of input audio stream (default 'left')
+                    
+        gain: in dB to apply when pan_audio is 'left' or 'right'
+        
+        audio_rate: Sample rate of audio input (in Hz, default 44100) used in 
+                    asetrate/aresample filters when hasten_audio=True
+                    
+        hasten_audio: None, 'pitch' or 'tempo'. Speed up audio during silent
+                      segment by either increasing pitch (with asetrate and 
+                      aresample filters) or tempo (with atempo filter).
+                      
+        silent_volume: scale the volume during silent segments (default 1.0; 
+                       no scaling)
     """
     filter_graph = silenceFilterGraph(silences, factor, audio_rate=audio_rate, hasten_audio=hasten_audio, silent_volume=silent_volume, delay=delay,
                         v_out='[vn]' if rescale else '[v]', a_out='[an]' if gain or pan_audio else '[a]')
@@ -463,22 +499,32 @@ def writeFilterGraph(filter_script_path, silences, **kwargs):
     silence_duration:  duration of the silent interval in seconds
     
     Arguments:
-    filter_script_path -- Path to save the filter script 
-    silences -- A list of silence dictionaries generated from getSilences
-    factor -- to speed up video during (a subset of) each silent interval
+        filter_script_path: Path to save the filter script 
+        
+        silences: A list of silence dictionaries generated from :func:`autoscrub.getSilences`
+        
+        factor: to speed up video during (a subset of) each silent interval
 
     Keyword arguments:
-    delay -- to omit from silent intervals when changing speed (default 0.25s)
-    rescale -- Scale and pad the video (pillar- or letter-box as required) for
-               1920 x 1080 display (default True)
-    pan_audio -- 'left', 'right', or None/False specify whether to duplicate a
-                 stereo channel of input audio stream (default 'left')
-    gain -- in dB to apply when pan_audio is 'left' or 'right'
-    audio_rate -- Sample rate of audio input (in Hz, default 44100) used in 
-                  asetrate/aresample filters when hasten_audio=True
-    hasten_audio -- None, 'pitch' or 'tempo'. Speed up audio during silent segment by either increasing pitch (with asetrate and 
-                    aresample filters) or tempo (with atempo filter).
-    silent_volume -- scale the volume during silent segments (default 1.0; no scaling)
+        delay: to omit from silent intervals when changing speed (default 0.25s)
+        
+        rescale: Scale and pad the video (pillar- or letter-box as required) for
+                 1920 x 1080 display (default True)
+                 
+        pan_audio: 'left', 'right', or None/False specify whether to duplicate a
+                   stereo channel of input audio stream (default 'left')
+                   
+        gain: in dB to apply when pan_audio is 'left' or 'right'
+        
+        audio_rate: Sample rate of audio input (in Hz, default 44100) used in 
+                    asetrate/aresample filters when hasten_audio=True
+                    
+        hasten_audio: None, 'pitch' or 'tempo'. Speed up audio during silent 
+                      segment by either increasing pitch (with asetrate and 
+                      aresample filters) or tempo (with atempo filter).
+                      
+        silent_volume: scale the volume during silent segments (default 1.0; 
+                       no scaling)
     """
     filter_graph = generateFilterGraph(silences, **kwargs)
     with open(filter_script_path, 'w') as f:
@@ -486,16 +532,29 @@ def writeFilterGraph(filter_script_path, silences, **kwargs):
 
 
 def ffmpegComplexFilter(input_path, filter_script_path, output_path=NUL, run_command=True, overwrite=None):
-    """Prepare and execute (if run_command) ffmpeg command for processing input_path with an
-    ffmpeg filter_complex string (filtergraph) in filter_script_path, and save to output_path.
-    As this requires re-encoding, video and audio settings are chosen to be compliant with YouTube's
-    'streamable content' specifications, available at (as of April 2017):
-        https://support.google.com/youtube/answer/1722171
+    """Executes the ffmpeg command and processes a complex filter
     
-    Flags:
-    ======
-    run_command: If False, simply prepare and return the command for debugging or later use.
-    overwrite:   Optionally specify addition of -y or -n flag to ffmpeg (useful for unattended scripting).
+    Prepare and execute (if run_command) ffmpeg command for processing 
+    input_path with an ffmpeg filter_complex string (filtergraph) in 
+    filter_script_path, and save to output_path. As this requires re-encoding, 
+    video and audio settings are chosen to be compliant with YouTube's 
+    'streamable content' specifications, available at (as of April 2017) 
+    https://support.google.com/youtube/answer/1722171
+    
+    Arguments:        
+        input_path: The path to the video file to process
+        
+        filter_script_path: The path to the filter script
+    
+    Keyword Arguments:
+        output_path: The path to save the processed video (defaults to 
+                     os.devnull)
+        
+        run_command: If False, simply prepare and return the command for 
+                     debugging or later use (default: True)
+                     
+        overwrite: Optionally specify addition of -y or -n flag to ffmpeg
+                   which is useful for unattended scripting (default None).
     """
     header = 'ffmpeg -i "%s"' % input_path
     youtube_video = '-c:v libx264 -crf 20 -bf 2 -flags +cgop -g 15 -pix_fmt yuv420p -movflags +faststart' # -tune stillimage

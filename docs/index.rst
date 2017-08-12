@@ -6,11 +6,16 @@
 Welcome to autoscrub's documentation!
 =====================================
 
+
+
+Contents
+========
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
 
-
+   install
+   api_reference
 
 Indices and tables
 ==================
