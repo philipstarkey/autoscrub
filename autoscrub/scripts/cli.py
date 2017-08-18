@@ -1,7 +1,40 @@
+# Copyright 2017 Russell Anderson, Philip Starkey
+#
+# This file is part of autoscrub.
+#
+# autoscrub is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# autoscrub is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with autoscrub.  If not, see <http://www.gnu.org/licenses/>.
+
 import click
 import autoscrub
 import tempfile
 import os
+import subprocess
+
+def check_ffmpeg():
+    # check ffmpeg exists
+    try:
+        subprocess.check_output("ffmpeg -L", stderr=subprocess.STDOUT)
+    except (subprocess.CalledProcessError, WindowsError):
+        click.echo("Could not find ffmpeg executable. Check that ffmpeg is in the local folder or your system PATH and that you can run 'ffmpeg -L' from the command line.")
+        raise click.Abort()
+        
+    # check ffprobe exists
+    try:
+        subprocess.check_output("ffprobe -L", stderr=subprocess.STDOUT)
+    except (subprocess.CalledProcessError, WindowsError):
+        click.echo("Could not find ffprobe executable. Check that ffprobe is in the local folder or your system PATH and that you can run 'ffprobe -L' from the command line.")
+        raise click.Abort()
 
 def format_nice_time(t_in_seconds):
     t_in_seconds = float(t_in_seconds)
@@ -90,7 +123,6 @@ def cli():
     where the available commands are listed below.
     """
     pass
-    
 
 @cli.command()
 @click.option(*_option__silence_duration[0], **_option__silence_duration[1])
@@ -103,10 +135,13 @@ def cli():
 @click.option(*_option__silent_volume[0],    **_option__silent_volume[1])
 @click.option(*_option__delay[0],            **_option__delay[1])
 @click.option('--debug', help="Retains the generated filtergraph file for inspection", is_flag=True)
-@click.argument('input', type=click.Path(exists=True))
-@click.argument('output', type=click.Path(exists=False))
+@click.argument('input', type=click.Path(exists=True), metavar="input_filepath")
+@click.argument('output', type=click.Path(exists=False), metavar="output_filepath")
 def autoprocess(input, output, speed, rescale, target_lufs, target_threshold, pan_audio, hasten_audio, silence_duration, delay, silent_volume, debug):
     """automatically process the input video and write to the specified output file"""
+    
+    # check executables exist
+    check_ffmpeg()
     
     # convert input/output paths to absolute paths
     input = os.path.abspath(input)
@@ -144,10 +179,13 @@ def autoprocess(input, output, speed, rescale, target_lufs, target_threshold, pa
 
 @cli.command(name='loudness-adjust')
 @click.option(*_option__target_lufs[0], **_option__target_lufs[1])
-@click.argument('input', type=click.Path(exists=True))
-@click.argument('output', type=click.Path(exists=False))
+@click.argument('input', type=click.Path(exists=True), metavar="input_filepath")
+@click.argument('output', type=click.Path(exists=False), metavar="output_filepath")
 def match_loudness(input, output, target_lufs):
     """Adjusts the loudness of the input file"""
+    
+    # check executables exist
+    check_ffmpeg()
     
     # convert input/output paths to absolute paths
     input = os.path.abspath(input)
@@ -156,9 +194,12 @@ def match_loudness(input, output, target_lufs):
     autoscrub.matchLoudness(input, target_lufs, output)
     
 @cli.command(name='display-video-properties')
-@click.argument('input', type=click.Path(exists=True))
+@click.argument('input', type=click.Path(exists=True), metavar="input_filepath")
 def get_properties(input):
     """Displays properties about the input file"""
+    
+    # check executables exist
+    check_ffmpeg()
     
     # convert input/output paths to absolute paths
     input = os.path.abspath(input)
@@ -176,9 +217,12 @@ def get_properties(input):
 @cli.command(name='identify-silences')
 @click.option(*_option__silence_duration[0], **_option__silence_duration[1])
 @click.option(*_option__target_threshold[0], **_option__target_threshold[1])
-@click.argument('input', type=click.Path(exists=True))
+@click.argument('input', type=click.Path(exists=True), metavar="input_filepath")
 def get_silences(input, silence_duration, target_threshold):
     """Displays a table of detected silent segments"""
+    
+    # check executables exist
+    check_ffmpeg()
     
     # convert input/output paths to absolute paths
     input = os.path.abspath(input)
@@ -199,10 +243,13 @@ def get_silences(input, silence_duration, target_threshold):
 @click.option(*_option__start[0], **_option__start[1])
 @click.option(*_option__stop[0],  **_option__stop[1])
 @click.option(*_option__codec[0], **_option__codec[1])
-@click.argument('input', type=click.Path(exists=True))
-@click.argument('output', type=click.Path(exists=False))
+@click.argument('input', type=click.Path(exists=True), metavar="input_filepath")
+@click.argument('output', type=click.Path(exists=False), metavar="output_filepath")
 def trim(input, output, start, stop, re_encode):
     """removes unwanted content from the start and end of the input file"""
+    
+    # check executables exist
+    check_ffmpeg()
     
     # convert input/output paths to absolute paths
     input = os.path.abspath(input)
@@ -230,12 +277,16 @@ def trim(input, output, start, stop, re_encode):
 @click.option(*_option__target_threshold[0], **_option__target_threshold[1])
 @click.option(*_option__silent_volume[0],    **_option__silent_volume[1])
 @click.option(*_option__delay[0],            **_option__delay[1])
-@click.argument('input', type=click.Path(exists=True))
+@click.argument('input', type=click.Path(exists=True), metavar="input_filepath")
 def make_filtergraph(input, speed, rescale, target_lufs, target_threshold, pan_audio, hasten_audio, silence_duration, delay, silent_volume):
     """Generates a filter-graph file for use with ffmpeg. 
     
     \b
     This command is useful if you want to manually edit the filter-graph file before processing your video."""
+    
+    # check executables exist
+    check_ffmpeg()
+    
     # convert input/output paths to absolute paths
     input = os.path.abspath(input)
     
@@ -259,11 +310,14 @@ def make_filtergraph(input, speed, rescale, target_lufs, target_threshold, pan_a
     create_filtergraph(input, filter_graph_path, speed, rescale, target_lufs, target_threshold, pan_audio, hasten_audio, silence_duration, delay, silent_volume)
     
 @cli.command(name='process-filtergraph')
-@click.argument('input', type=click.Path(exists=True))
-@click.argument('output', type=click.Path(exists=False))
+@click.argument('input', type=click.Path(exists=True), metavar="input_filepath")
+@click.argument('output', type=click.Path(exists=False), metavar="output_filepath")
 def use_filtergraph(input, output):
     """Processes a video file using the filter-graph file created by the autoscrub make-filtergraph command"""
-
+    
+    # check executables exist
+    check_ffmpeg()
+    
     # convert input/output paths to absolute paths
     input = os.path.abspath(input)
     output = os.path.abspath(output)

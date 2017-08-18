@@ -1,5 +1,7 @@
+.. _command_line_reference:
+
 ****************************
-Command Line Usage Reference
+Command line usage reference
 ****************************
 
 .. click:: autoscrub.scripts.cli:cli

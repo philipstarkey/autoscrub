@@ -5,23 +5,16 @@
 
 Welcome to autoscrub's documentation!
 =====================================
-
+autoscrub is a command line tool that automates the production of educational videos by increasing the playback speed during silent segments.
 
 
 Contents
 ========
 .. toctree::
    :maxdepth: 1
-   :caption: Contents:
 
    install
    usage
    usage_reference
    api_reference
 
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
