@@ -1,0 +1,7 @@
+syntax: glob
+*.pyc
+docs/_build/*
+build/*
+dist/*
+autoscrub.egg-info/*
+autoscrub/__version__.py
