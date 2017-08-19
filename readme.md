@@ -6,3 +6,6 @@ Documentation, along with installation instructions, are available at [http://au
 
 ## Licence
 autoscrub is licensed under the GPLv3 licence.
+
+## Contributing
+Please see [contributing.md](https://bitbucket.org/philipstarkey/autoscrub/src/tip/contributing.md)

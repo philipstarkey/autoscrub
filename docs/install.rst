@@ -1,7 +1,9 @@
 ************
 Installation
 ************
-These installation instructions assume you already have Python installed. If you do not already have a copy of Python, we recommend you install `Anaconda Python`_.   
+These installation instructions assume you already have Python 2.7 installed. If you do not already have a copy of Python, we recommend you install `Anaconda Python`_. 
+
+.. note:: autoscrub is not yet compatible with Python 3.  
 
 .. _`Anaconda Python`: https://www.continuum.io/downloads
 

@@ -19,7 +19,7 @@ import os
 from setuptools import setup, find_packages
 
 
-VERSION = '0.1.3'
+VERSION = '0.2.0'
 # Auto generate a __version__ package for the package to import
 with open(os.path.join('autoscrub', '__version__.py'), 'w') as f:
     f.write("__version__ = '%s'\n" % VERSION)
@@ -27,6 +27,17 @@ with open(os.path.join('autoscrub', '__version__.py'), 'w') as f:
 setup(
     name='autoscrub',
     version=VERSION,
+    url='https://bitbucket.org/philipstarkey/autoscrub',
+    license='GPLv3',
+    author='Russell Anderson, Philip Starkey',
+    classifiers=['Development Status :: 4 - Beta',
+                 'Programming Language :: Python :: 2.7',
+                 'Environment :: Console',
+                 'Intended Audience :: Education',
+                 'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
+                 'Natural Language :: English',
+                ],
+    python_requires='>=2.7, <3.0',
     packages=find_packages(),
     include_package_data=True,
     install_requires=[
