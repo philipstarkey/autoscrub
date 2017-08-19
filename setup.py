@@ -19,7 +19,7 @@ import os
 from setuptools import setup, find_packages
 
 
-VERSION = '0.2.0'
+VERSION = '0.2.1'
 # Auto generate a __version__ package for the package to import
 with open(os.path.join('autoscrub', '__version__.py'), 'w') as f:
     f.write("__version__ = '%s'\n" % VERSION)
@@ -27,6 +27,7 @@ with open(os.path.join('autoscrub', '__version__.py'), 'w') as f:
 setup(
     name='autoscrub',
     version=VERSION,
+    description='autoscrub is a command line tool that automates the production of educational videos by increasing the playback speed during silent segments.',
     url='https://bitbucket.org/philipstarkey/autoscrub',
     license='GPLv3',
     author='Russell Anderson, Philip Starkey',
