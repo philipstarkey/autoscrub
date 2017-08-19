@@ -19,7 +19,7 @@ import os
 from setuptools import setup, find_packages
 
 
-VERSION = '0.2.1'
+VERSION = '0.3.0'
 # Auto generate a __version__ package for the package to import
 with open(os.path.join('autoscrub', '__version__.py'), 'w') as f:
     f.write("__version__ = '%s'\n" % VERSION)
@@ -33,16 +33,18 @@ setup(
     author='Russell Anderson, Philip Starkey',
     classifiers=['Development Status :: 4 - Beta',
                  'Programming Language :: Python :: 2.7',
+                 'Programming Language :: Python :: 3.6',
                  'Environment :: Console',
                  'Intended Audience :: Education',
                  'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
                  'Natural Language :: English',
                 ],
-    python_requires='>=2.7, <3.0',
+    python_requires='>=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*, !=3.5.*, <4',
     packages=find_packages(),
     include_package_data=True,
     install_requires=[
-        'Click',
+        'click',
+        'six'
     ],
     entry_points='''
         [console_scripts]

@@ -73,11 +73,19 @@ def create_filtergraph(input, filter_graph_path, speed, rescale, target_lufs, ta
     # determine audio sample rate
     click.echo('\nGetting audio sample rate...')
     input_sample_rate = autoscrub.getSampleRate(input)
-    click.echo("Measured sample rate = %d Hz"%input_sample_rate)
-
+    try:
+        click.echo("Measured sample rate = %d Hz"%input_sample_rate)
+    except Exception:
+        click.echo("Could not determine the audio samplerate of your file")
+        raise click.abort()
+        
     click.echo('\nChecking loudness of file...')
     loudness = autoscrub.getLoudness(input)
-    input_lufs = loudness['I']
+    try:
+        input_lufs = loudness['I']
+    except Exception:
+        click.echo("Could not determine the loudness of your file")
+        raise click.abort()
     
     # Calculate gain
     gain = target_lufs - input_lufs
@@ -210,9 +218,18 @@ def get_properties(input):
     samplerate = autoscrub.findSampleRate(ffprobe_log)
     loudness = autoscrub.getLoudness(input)
     
-    click.echo("Duration: {:.3f}s".format(duration))
-    click.echo("Audio sample rate: {}Hz".format(samplerate))
-    click.echo("Loudness: {}LUFS".format(loudness['I']))
+    try:
+        click.echo("Duration: {:.3f}s".format(duration))
+    except Exception:
+        click.echo("Duration: unknown")
+    try:
+        click.echo("Audio sample rate: {}Hz".format(samplerate))
+    except Exception:
+        click.echo("Audio sample rate: unknown")
+    try:
+        click.echo("Loudness: {}LUFS".format(loudness['I']))
+    except Exception:
+        click.echo("Loudness: unknown")
     
 @cli.command(name='identify-silences')
 @click.option(*_option__silence_duration[0], **_option__silence_duration[1])

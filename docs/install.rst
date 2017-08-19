@@ -1,11 +1,12 @@
 ************
 Installation
 ************
-These installation instructions assume you already have Python 2.7 installed. If you do not already have a copy of Python, we recommend you install `Anaconda Python`_. 
+These installation instructions assume you already have Python installed. If you do not already have a copy of Python, we recommend you install `Anaconda Python`_. 
 
-.. note:: autoscrub is not yet compatible with Python 3.  
+.. note:: autoscrub's Python 3 support is experimental, and only works with 3.6+. If you run into any troubles with Python 3, please let us know via the `issue tracker`_, and then try Python 2.7 instead.  
 
 .. _`Anaconda Python`: https://www.continuum.io/downloads
+.. _`issue tracker`: https://bitbucket.org/philipstarkey/autoscrub/issues
 
 ======
 FFmpeg

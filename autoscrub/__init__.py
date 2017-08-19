@@ -25,10 +25,29 @@ import os
 import re
 from subprocess import Popen, call, PIPE
 import math
+from functools import reduce
 
 import six
 
 NUL = os.devnull
+
+__terminal_encoding = 'utf-8'
+def set_terminal_encoding(encoding):
+    """ Sets the encoding used for communicating with ffmpeg and ffprobe
+    
+    .. note::Only applies to Python 3.  
+    
+    Sets the default value for the :code:`encoding` keyword argument passed
+    to :code:`subprocess.Popen`. This chould match your system encoding, and
+    is unlikely to need changing.
+    """
+    __terminal_encoding = encoding
+
+def _agnostic_Popen(*args, **kwargs):
+    if six.PY3 and 'encoding' not in kwargs:
+        kwargs['encoding'] = __terminal_encoding
+        
+    return Popen(*args, **kwargs)
 
 def hhmmssd_to_seconds(s):
     """Convert a :code:`'[hh:]mm:ss[.d]'` string to seconds. 
@@ -53,7 +72,7 @@ def ffprobe(filename):
         The output of the ffprobe command.
     """
     command = 'ffprobe -i "%s"' % filename
-    p = Popen(command, stdout=PIPE, stderr=PIPE)
+    p = _agnostic_Popen(command, stdout=PIPE, stderr=PIPE)
     stdout, stderr = p.communicate()
     return stderr
 
@@ -88,7 +107,7 @@ def ffmpeg(filename, args=[], output_path=None, output_type=None):
         output_path = filename_prefix + '_processed' + file_extension
     command += ['%s' % output_path.replace('\\', '/')]
     print(' '.join(command))
-    p = Popen(command)
+    p = _agnostic_Popen(command)
     stdout, stderr = p.communicate()
     return output_path
 
@@ -169,7 +188,7 @@ def findSilences(log_output):
     matches = re.findall(r"(silence_[a-z]+): ([\-\d\.]+)", log_output)
     matches = [(k, float(v)) for (k, v) in matches]
     if matches:
-        return [dict(matches[i:i + 3]) for i in xrange(0, len(matches), 3)]
+        return [dict(matches[i:i + 3]) for i in six.moves.xrange(0, len(matches), 3)]
     else:
         return []
 
@@ -197,7 +216,7 @@ def getSilences(filename, input_threshold_dB=-18.0, silence_duration=2.0, save_s
         silence_duration:  duration of the silent interval in seconds
     """
     command = 'ffmpeg -i "%s" -af silencedetect=n=%.1fdB:d=%s -f null %s' % (filename, input_threshold_dB, silence_duration, NUL)
-    p = Popen(command, stdout=PIPE, stderr=PIPE)
+    p = _agnostic_Popen(command, stdout=PIPE, stderr=PIPE)
     stdout, stderr = p.communicate()
     silences = findSilences(stderr)
     if save_silences:
@@ -227,7 +246,7 @@ def findLoudness(log_output):
         LRA low:
         Threshold: 
     """
-    log_split = re.split(r"Parsed_ebur128.+\r\n", log_output)
+    log_split = re.split(r"Parsed_ebur128.+", log_output)
     if len(log_split) > 1:
         summary = log_split[-1]
         matches = re.findall(r"([A-Z][A-Za-z ]*): +([\-\d\.]+)", summary)
@@ -252,7 +271,7 @@ def getLoudness(filename):
         Threshold:        
     """
     command = 'ffmpeg -i "%s" -c:v copy -af ebur128 -f null %s' % (filename, NUL)
-    p = Popen(command, stdout=PIPE, stderr=PIPE)
+    p = _agnostic_Popen(command, stdout=PIPE, stderr=PIPE)
     stdout, stderr = p.communicate()
     return findLoudness(stderr)
 
@@ -314,9 +333,9 @@ def trim(input_path, tstart=0, tstop=None, output_path=None, overwrite=None, cod
     """
     folder, filename = os.path.split(input_path)
     if not isinstance(tstart, six.string_types):
-        tstart = '%.4f' % tstart
+        tstart = '%.4f' % float(tstart)
     if tstop and not isinstance(tstop, six.string_types):
-        tstop = '%.4f' % tstop
+        tstop = '%.4f' % float(tstop)
     command = ['ffmpeg', '-i', filename]
     if hhmmssd_to_seconds(tstart) > 0:
         command += ['-ss', tstart]
@@ -335,10 +354,10 @@ def trim(input_path, tstart=0, tstop=None, output_path=None, overwrite=None, cod
         output_path = filename_prefix + '_trimmed' + file_extension
     command.append(output_path)
     try:
-        p = Popen(command, cwd=folder if folder else '.')
+        p = _agnostic_Popen(command, cwd=folder if folder else '.')
         stdout, stderr = p.communicate()
         return os.path.join(folder, output_path)
-    except Exception, e:
+    except Exception as e:
         print(e)
         return None 
 
@@ -415,10 +434,10 @@ def concatFileList(concat_path, output_path, overwrite=None):
     command += ' "%s"' % output_path
     print(command)
     try:
-        p = Popen(command)
+        p = _agnostic_Popen(command)
         stdout, stderr = p.communicate()
         return output_path
-    except Exception, e:
+    except Exception as e:
         print(e)
         return None         
 
@@ -771,7 +790,7 @@ def ffmpegComplexFilter(input_path, filter_script_path, output_path=NUL, run_com
     command = ' '.join(command_list)
     print(command)
     if run_command:
-        p = Popen(command)
+        p = _agnostic_Popen(command)
         stdout, stderr = p.communicate()
         return output_path
     else:
