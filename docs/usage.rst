@@ -3,7 +3,7 @@ Example command line usage
 **************************
 The installation process of autoscrub automatically creates a command line utility for you to use. Here we will show examples of the most common usage. To see the full set of available commands and options run :code:`autoscrub --help` from a terminal or look in the :ref:`command_line_reference` documentation.
 
-.. note: As autoscrub is a wrapper around FFmpeg, autoscrub will accept any input video format that FFmpeg does. This includes :code:`.trec` files produced by Camtasia.
+.. note:: As autoscrub is a wrapper around FFmpeg, autoscrub will accept any input video format that FFmpeg does. This includes :code:`.trec` files produced by Camtasia.
 
 .. note:: autoscrub automatically transcodes your video to match the `recommended upload settings for YouTube`_. This means that the output file extension should always be :code:`.mp4`.
 
