@@ -15,11 +15,13 @@
 # You should have received a copy of the GNU General Public License
 # along with autoscrub.  If not, see <http://www.gnu.org/licenses/>.
 
-import click
-import autoscrub
 import tempfile
 import os
 import subprocess
+
+import autoscrub
+import click
+import requests
 
 def check_ffmpeg():
     # check ffmpeg exists
@@ -35,6 +37,35 @@ def check_ffmpeg():
     except (subprocess.CalledProcessError, WindowsError):
         click.echo("Could not find ffprobe executable. Check that ffprobe is in the local folder or your system PATH and that you can run 'ffprobe -L' from the command line.")
         raise click.Abort()
+        
+def check_for_new_autoscrub_version():
+    try:
+        r = requests.get('https://pypi.python.org/pypi/autoscrub/json', timeout=0.1)
+        online_version = r.json()['info']['version']
+        if online_version != autoscrub.__version__:
+            # check to see if version is newer
+            o_major, o_minor, o_patch = online_version.split('.')
+            l_major, l_minor, l_patch = autoscrub.__version__.split('.')
+            
+            upgrade = False
+            if int(l_major) < int(o_major):
+                upgrade = True
+            elif int(l_major) == int(o_major) and int(l_minor) < int(o_minor):
+                upgrade = True
+            elif int(l_major) == int(o_major) and int(l_minor) == int(o_minor) and int(l_patch) < int(o_patch):
+                upgrade = True
+            
+            if upgrade:
+                click.echo(click.style("A new version of autoscrub is available", fg='green', bg='black'))
+                click.echo(click.style("You are running autoscrub version: {}".format(autoscrub.__version__), fg='green', bg='black'))
+                click.echo(click.style("The latest autoscrub version is: {}".format(online_version), fg='green', bg='black'))
+                click.echo(click.style("To upgrade, run: pip install -U autoscrub", fg='green', bg='black'))
+                return True
+                
+    except Exception:
+        pass
+    
+    return False
 
 def format_nice_time(t_in_seconds):
     t_in_seconds = float(t_in_seconds)
@@ -133,6 +164,15 @@ def cli():
     pass
 
 @cli.command()
+def version():
+    """Displays the autoscrub version"""
+    
+    # print out version if upgrade not available 
+    # (upgrade text prints out current version, so the current version is printed either way)
+    if not check_for_new_autoscrub_version():    
+        click.echo("autoscrub version: {}".format(autoscrub.__version__))
+    
+@cli.command()
 @click.option(*_option__silence_duration[0], **_option__silence_duration[1])
 @click.option(*_option__hasten_audio[0],     **_option__hasten_audio[1])
 @click.option(*_option__target_lufs[0],      **_option__target_lufs[1])
@@ -150,6 +190,9 @@ def autoprocess(input, output, speed, rescale, target_lufs, target_threshold, pa
     
     # check executables exist
     check_ffmpeg()
+    
+    # check autoscrub version
+    check_for_new_autoscrub_version()
     
     # convert input/output paths to absolute paths
     input = os.path.abspath(input)
@@ -195,6 +238,9 @@ def match_loudness(input, output, target_lufs):
     # check executables exist
     check_ffmpeg()
     
+    # check autoscrub version
+    check_for_new_autoscrub_version()
+    
     # convert input/output paths to absolute paths
     input = os.path.abspath(input)
     output = os.path.abspath(output)
@@ -208,6 +254,9 @@ def get_properties(input):
     
     # check executables exist
     check_ffmpeg()
+    
+    # check autoscrub version
+    check_for_new_autoscrub_version()
     
     # convert input/output paths to absolute paths
     input = os.path.abspath(input)
@@ -241,6 +290,9 @@ def get_silences(input, silence_duration, target_threshold):
     # check executables exist
     check_ffmpeg()
     
+    # check autoscrub version
+    check_for_new_autoscrub_version()
+    
     # convert input/output paths to absolute paths
     input = os.path.abspath(input)
     
@@ -267,6 +319,9 @@ def trim(input, output, start, stop, re_encode):
     
     # check executables exist
     check_ffmpeg()
+    
+    # check autoscrub version
+    check_for_new_autoscrub_version()
     
     # convert input/output paths to absolute paths
     input = os.path.abspath(input)
@@ -304,6 +359,9 @@ def make_filtergraph(input, speed, rescale, target_lufs, target_threshold, pan_a
     # check executables exist
     check_ffmpeg()
     
+    # check autoscrub version
+    check_for_new_autoscrub_version()
+    
     # convert input/output paths to absolute paths
     input = os.path.abspath(input)
     
@@ -334,6 +392,9 @@ def use_filtergraph(input, output):
     
     # check executables exist
     check_ffmpeg()
+    
+    # check autoscrub version
+    check_for_new_autoscrub_version()
     
     # convert input/output paths to absolute paths
     input = os.path.abspath(input)

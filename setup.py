@@ -19,7 +19,7 @@ import os
 from setuptools import setup, find_packages
 
 
-VERSION = '0.3.0'
+VERSION = '0.3.1'
 # Auto generate a __version__ package for the package to import
 with open(os.path.join('autoscrub', '__version__.py'), 'w') as f:
     f.write("__version__ = '%s'\n" % VERSION)
@@ -44,7 +44,8 @@ setup(
     include_package_data=True,
     install_requires=[
         'click',
-        'six'
+        'six',
+        'requests',
     ],
     entry_points='''
         [console_scripts]
