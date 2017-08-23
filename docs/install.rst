@@ -68,7 +68,7 @@ where :code:`<version>` is replaced by the version you wish (for example :code:`
 Development Version
 -------------------
 
-If you wish to use the latest development version, you can obtain the source code from our `mercurial repository`_. Once you have cloned our repository, you should run :code:`python setup.py install` in order to build and install the autoscriub package.
+If you wish to use the latest development version, you can obtain the source code from our `mercurial repository`_. Once you have cloned our repository, you should run :code:`python setup.py install` in order to build and install the autoscrub package.
 
 
 .. _`mercurial repository`: https://bitbucket.org/philipstarkey/autoscrub
