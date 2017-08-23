@@ -3,11 +3,11 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to autoscrub's documentation!
-=====================================
-autoscrub is a command line tool that automates the production of educational videos by increasing the playback speed during silent segments.
+autoscrub: It speeds up when you shut up
+========================================
+autoscrub is a command line tool that hastens silent intervals of videos.
 
-autoscrub automatically transcodes your video to match the `Recommended upload encoding settings for YouTube`_.
+It does so using Python-scripted calls to FFmpeg, and while processing the video autoscrub can automatically perform other post-production, including volume matching and transcoding to match the `Recommended upload encoding settings for YouTube`_.
 
 .. _`Recommended upload encoding settings for YouTube`: https://support.google.com/youtube/answer/1722171?hl=en
 

@@ -27,7 +27,7 @@ with open(os.path.join('autoscrub', '__version__.py'), 'w') as f:
 setup(
     name='autoscrub',
     version=VERSION,
-    description='autoscrub is a command line tool that automates the production of educational videos by increasing the playback speed during silent segments.',
+    description='Hastens silent intervals of videos using FFmpeg',
     url='https://bitbucket.org/philipstarkey/autoscrub',
     license='GPLv3',
     author='Russell Anderson, Philip Starkey',
