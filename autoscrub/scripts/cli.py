@@ -26,15 +26,15 @@ import requests
 def check_ffmpeg():
     # check ffmpeg exists
     try:
-        subprocess.check_output("ffmpeg -L", stderr=subprocess.STDOUT)
-    except (subprocess.CalledProcessError, WindowsError):
+        subprocess.check_output(["ffmpeg", "-L"], stderr=subprocess.STDOUT)
+    except (subprocess.CalledProcessError, OSError):
         click.echo("Could not find ffmpeg executable. Check that ffmpeg is in the local folder or your system PATH and that you can run 'ffmpeg -L' from the command line.")
         raise click.Abort()
         
     # check ffprobe exists
     try:
-        subprocess.check_output("ffprobe -L", stderr=subprocess.STDOUT)
-    except (subprocess.CalledProcessError, WindowsError):
+        subprocess.check_output(["ffprobe", "-L"], stderr=subprocess.STDOUT)
+    except (subprocess.CalledProcessError, OSError):
         click.echo("Could not find ffprobe executable. Check that ffprobe is in the local folder or your system PATH and that you can run 'ffprobe -L' from the command line.")
         raise click.Abort()
         
