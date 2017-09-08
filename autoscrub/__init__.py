@@ -37,18 +37,30 @@ def set_terminal_encoding(encoding):
     
     .. note::Only applies to Python 3.  
     
-    Sets the default value for the :code:`encoding` keyword argument passed
-    to :code:`subprocess.Popen`. This chould match your system encoding, and
+    Sets the default value used to decode strings returned from
+    :code:`subprocess.Popen`. This should match your system encoding, and
     is unlikely to need changing.
     """
     __terminal_encoding = encoding
 
 def _agnostic_Popen(*args, **kwargs):
-    if six.PY3 and 'encoding' not in kwargs:
-        kwargs['encoding'] = __terminal_encoding
-        
+    if 'shell' not in kwargs:
+        kwargs['shell'] = True
+                
     return Popen(*args, **kwargs)
 
+def _agnostic_communicate(p):
+    stdout, stderr = p.communicate()
+    
+    if six.PY3:
+        if stdout is not None:
+            stdout = stdout.decode(__terminal_encoding)
+        if stderr is not None:
+            stderr = stderr.decode(__terminal_encoding)
+            
+    return stdout, stderr
+
+    
 def hhmmssd_to_seconds(s):
     """Convert a :code:`'[hh:]mm:ss[.d]'` string to seconds. 
     
@@ -73,7 +85,7 @@ def ffprobe(filename):
     """
     command = 'ffprobe -i "%s"' % filename
     p = _agnostic_Popen(command, stdout=PIPE, stderr=PIPE)
-    stdout, stderr = p.communicate()
+    stdout, stderr = _agnostic_communicate(p)
     return stderr
 
 
@@ -108,7 +120,7 @@ def ffmpeg(filename, args=[], output_path=None, output_type=None):
     command += ['%s' % output_path.replace('\\', '/')]
     print(' '.join(command))
     p = _agnostic_Popen(command)
-    stdout, stderr = p.communicate()
+    stdout, stderr = _agnostic_communicate(p)
     return output_path
 
 
@@ -217,7 +229,7 @@ def getSilences(filename, input_threshold_dB=-18.0, silence_duration=2.0, save_s
     """
     command = 'ffmpeg -i "%s" -af silencedetect=n=%.1fdB:d=%s -f null %s' % (filename, input_threshold_dB, silence_duration, NUL)
     p = _agnostic_Popen(command, stdout=PIPE, stderr=PIPE)
-    stdout, stderr = p.communicate()
+    stdout, stderr = _agnostic_communicate(p)
     silences = findSilences(stderr)
     if save_silences:
         filename_prefix, file_extension = os.path.splitext(filename)
@@ -272,7 +284,7 @@ def getLoudness(filename):
     """
     command = 'ffmpeg -i "%s" -c:v copy -af ebur128 -f null %s' % (filename, NUL)
     p = _agnostic_Popen(command, stdout=PIPE, stderr=PIPE)
-    stdout, stderr = p.communicate()
+    stdout, stderr = _agnostic_communicate(p)
     return findLoudness(stderr)
 
 
@@ -355,7 +367,7 @@ def trim(input_path, tstart=0, tstop=None, output_path=None, overwrite=None, cod
     command.append(output_path)
     try:
         p = _agnostic_Popen(command, cwd=folder if folder else '.')
-        stdout, stderr = p.communicate()
+        stdout, stderr = _agnostic_communicate(p)
         return os.path.join(folder, output_path)
     except Exception as e:
         print(e)
@@ -435,7 +447,7 @@ def concatFileList(concat_path, output_path, overwrite=None):
     print(command)
     try:
         p = _agnostic_Popen(command)
-        stdout, stderr = p.communicate()
+        stdout, stderr = _agnostic_communicate(p)
         return output_path
     except Exception as e:
         print(e)
@@ -791,7 +803,7 @@ def ffmpegComplexFilter(input_path, filter_script_path, output_path=NUL, run_com
     print(command)
     if run_command:
         p = _agnostic_Popen(command)
-        stdout, stderr = p.communicate()
+        stdout, stderr = _agnostic_communicate(p)
         return output_path
     else:
         return command

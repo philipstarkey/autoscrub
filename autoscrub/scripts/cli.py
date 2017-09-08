@@ -108,7 +108,7 @@ def create_filtergraph(input, filter_graph_path, speed, rescale, target_lufs, ta
         click.echo("Measured sample rate = %d Hz"%input_sample_rate)
     except Exception:
         click.echo("Could not determine the audio samplerate of your file")
-        raise click.abort()
+        raise click.Abort()
         
     click.echo('\nChecking loudness of file...')
     loudness = autoscrub.getLoudness(input)
@@ -116,7 +116,7 @@ def create_filtergraph(input, filter_graph_path, speed, rescale, target_lufs, ta
         input_lufs = loudness['I']
     except Exception:
         click.echo("Could not determine the loudness of your file")
-        raise click.abort()
+        raise click.Abort()
     
     # Calculate gain
     gain = target_lufs - input_lufs
