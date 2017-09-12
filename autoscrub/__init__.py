@@ -31,6 +31,9 @@ import six
 
 NUL = os.devnull
 
+class AutoscrubException(Exception):
+    pass
+
 __terminal_encoding = 'utf-8'
 def set_terminal_encoding(encoding):
     """ Sets the encoding used for communicating with ffmpeg and ffprobe
@@ -47,7 +50,18 @@ def _agnostic_Popen(*args, **kwargs):
     if 'shell' not in kwargs:
         kwargs['shell'] = True
                 
-    return Popen(*args, **kwargs)
+    p = Popen(*args, **kwargs)
+    
+    # get the command passed to Popen
+    if len(args) > 0:
+        command = args[0]
+    else:
+        command = kwargs['args']
+        
+    # store the command for use in exception handling later
+    p.autoscrub_command = command
+        
+    return p
 
 def _agnostic_communicate(p):
     stdout, stderr = p.communicate()
@@ -57,6 +71,17 @@ def _agnostic_communicate(p):
             stdout = stdout.decode(__terminal_encoding)
         if stderr is not None:
             stderr = stderr.decode(__terminal_encoding)
+            
+    # if autoscrub did not return correctly
+    if p.returncode != 0:    
+        # format the command
+        if isinstance(p.autoscrub_command, six.string_types):
+            command = p.autoscrub_command
+        else:
+            command = ' '.join(p.autoscrub_command)
+    
+        # raise Exception
+        raise AutoscrubException('The command "{}" failed to execute and exited with return code {}'.format(command, p.returncode))
             
     return stdout, stderr
 
