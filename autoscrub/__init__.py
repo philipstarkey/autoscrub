@@ -26,6 +26,7 @@ import re
 from subprocess import Popen, call, PIPE
 import math
 from functools import reduce
+import signal
 
 import six
 
@@ -34,6 +35,30 @@ NUL = os.devnull
 class AutoscrubException(Exception):
     pass
 
+    
+# setup signal handling
+_previous_sigint = signal.getsignal(signal.SIGINT)
+_previous_sigterm = signal.getsignal(signal.SIGTERM)
+_process_list = []
+def _kill_autoscrub_processes(signum, frame):
+    print('killing')
+    for p in _process_list:
+        try:
+            p.terminate()
+        except Exception:
+            pass
+
+    if signum == signal.SIGINT and _previous_sigint not in [None, signal.SIG_IGN, signal.SIG_DFL]:
+        _previous_sigint(signum, frame)
+    if signum == signal.SIGTERM and _previous_sigint not in [None, signal.SIG_IGN, signal.SIG_DFL]:
+        _previous_sigterm(signum, frame)
+        
+    # force terminate
+    os._exit(1) 
+        
+signal.signal(signal.SIGINT, _kill_autoscrub_processes)
+signal.signal(signal.SIGTERM, _kill_autoscrub_processes)
+    
 __terminal_encoding = 'utf-8'
 def set_terminal_encoding(encoding):
     """ Sets the encoding used for communicating with ffmpeg and ffprobe
@@ -51,6 +76,9 @@ def _agnostic_Popen(*args, **kwargs):
         kwargs['shell'] = True
                 
     p = Popen(*args, **kwargs)
+    
+    # add the process to a list incase we get a SIGTERM or SIGINT
+    _process_list.append(p)
     
     # get the command passed to Popen
     if len(args) > 0:
@@ -72,6 +100,10 @@ def _agnostic_communicate(p):
         if stderr is not None:
             stderr = stderr.decode(__terminal_encoding)
             
+    # we don't need to keep hold of the process anymore (for passing along SIGTERM and SIGINT)
+    # since the process is done
+    _process_list.remove(p)
+    
     # if autoscrub did not return correctly
     if p.returncode != 0:    
         # format the command
@@ -79,7 +111,7 @@ def _agnostic_communicate(p):
             command = p.autoscrub_command
         else:
             command = ' '.join(p.autoscrub_command)
-    
+        
         # raise Exception
         raise AutoscrubException('The command "{}" failed to execute and exited with return code {}'.format(command, p.returncode))
             
@@ -813,25 +845,28 @@ def ffmpegComplexFilter(input_path, filter_script_path, output_path=NUL, run_com
                    which is useful for unattended scripting (default None).
                    
     Returns:
-        :code:`output_path` if :code:`run_command=True` otherwise returns the fully formatted ffmpeg command to run as a string.
+        :code:`output_path` if :code:`run_command=True` otherwise returns the command sequence (to be passed to :code:`subprocess.Popen` or formatted into a string for printing).
     """
-    header = 'ffmpeg -i "%s"' % input_path
-    youtube_video = '-c:v libx264 -crf 20 -bf 2 -flags +cgop -g 15 -pix_fmt yuv420p -movflags +faststart' # -tune stillimage
-    youtube_audio = '-c:a aac -r:a 48000 -b:a 192k'
-    youtube_other = '-strict -2'
-    filter_command = '-filter_complex_script "%s" -map [v] -map [a]' % filter_script_path
-    tail = '"%s"' % output_path
+    header = ['ffmpeg', '-i', '%s'% input_path] 
+    youtube_video = ['-c:v', 'libx264', '-crf', '20', '-bf', '2', '-flags', '+cgop', '-g', '15', '-pix_fmt', 'yuv420p', '-movflags', '+faststart'] # -tune stillimage
+    youtube_audio = ['-c:a', 'aac', '-r:a', '48000', '-b:a', '192k']
+    youtube_other = ['-strict', '-2']
+    filter_command = ['-filter_complex_script', '%s'%filter_script_path, '-map', '[v]', '-map', '[a]'] 
+    tail = ["%s" % output_path]
     if overwrite is not None:
-        tail = ('-y ' + tail) if overwrite==True else ('-n ' + tail)
-    command_list = [header, youtube_video, youtube_audio, youtube_other, filter_command, tail]
-    command = ' '.join(command_list)
-    print(command)
+        if overwrite:
+            tail.insert(0, '-y')
+        else:
+            tail.insert(0, '-n')
+    command_list = header + youtube_video + youtube_audio + youtube_other + filter_command + tail
+    # command = ' '.join(command_list)
+    print(' '.join(command_list))
     if run_command:
-        p = _agnostic_Popen(command)
+        p = _agnostic_Popen(command_list, shell=False)
         stdout, stderr = _agnostic_communicate(p)
         return output_path
     else:
-        return command
+        return command_list
 
 
 if __name__ == '__main__':
