@@ -19,7 +19,7 @@ import os
 from setuptools import setup, find_packages
 
 
-VERSION = '0.4.3'
+VERSION = '0.4.4'
 # Auto generate a __version__ package for the package to import
 with open(os.path.join('autoscrub', '__version__.py'), 'w') as f:
     f.write("__version__ = '%s'\n" % VERSION)
@@ -33,6 +33,8 @@ setup(
     author='Russell Anderson, Philip Starkey',
     classifiers=['Development Status :: 4 - Beta',
                  'Programming Language :: Python :: 2.7',
+                 'Programming Language :: Python :: 3.4',
+                 'Programming Language :: Python :: 3.5',
                  'Programming Language :: Python :: 3.6',
                  'Environment :: Console',
                  'Intended Audience :: Education',
@@ -46,6 +48,7 @@ setup(
         'click',
         'six',
         'requests',
+        'subprocess32;python_version<"3.2"',
     ],
     entry_points='''
         [console_scripts]

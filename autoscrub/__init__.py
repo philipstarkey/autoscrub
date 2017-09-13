@@ -22,13 +22,23 @@ except ImportError:
     __version__ = None
 
 import os
+import sys
 import re
-from subprocess import Popen, call, PIPE
+import six
+if six.PY3:
+    from subprocess import Popen, call, PIPE, list2cmdline
+    if sys.platform.startswith('win'):
+        from subprocess import CREATE_NEW_PROCESS_GROUP
+else:
+    # backported subprocess module
+    from subprocess32 import Popen, call, PIPE, list2cmdline
+    if sys.platform.startswith('win'):
+        from subprocess import CREATE_NEW_PROCESS_GROUP
+
 import math
 from functools import reduce
 import signal
 
-import six
 
 NUL = os.devnull
 
@@ -36,12 +46,12 @@ class AutoscrubException(Exception):
     pass
 
     
-# setup signal handling
+# setup signal handling to terminate ffmpeg/ffprobe subprocesses when
+# this process is terminated
 _previous_sigint = signal.getsignal(signal.SIGINT)
 _previous_sigterm = signal.getsignal(signal.SIGTERM)
 _process_list = []
 def _kill_autoscrub_processes(signum, frame):
-    print('killing')
     for p in _process_list:
         try:
             p.terminate()
@@ -72,9 +82,24 @@ def set_terminal_encoding(encoding):
     __terminal_encoding = encoding
 
 def _agnostic_Popen(*args, **kwargs):
+    # sensible defaults for kwargs
     if 'shell' not in kwargs:
-        kwargs['shell'] = True
+        kwargs['shell'] = False
+    if 'stdin' not in kwargs:
+        kwargs['stdin'] = PIPE
+    if 'stderr' not in kwargs:
+        kwargs['stderr'] = PIPE
+    if 'stdout' not in kwargs:
+        kwargs['stdout'] = PIPE
                 
+    # Launch the subprocess as a new subprocess group in order to
+    if sys.platform.startswith('win'):
+        if 'creationflags' not in kwargs:
+            kwargs['creationflags'] = CREATE_NEW_PROCESS_GROUP
+    else:
+        if 'start_new_session' not in kwargs:
+            kwargs['start_new_session'] = True
+            
     p = Popen(*args, **kwargs)
     
     # add the process to a list incase we get a SIGTERM or SIGINT
@@ -91,15 +116,47 @@ def _agnostic_Popen(*args, **kwargs):
         
     return p
 
-def _agnostic_communicate(p):
-    stdout, stderr = p.communicate()
-    
-    if six.PY3:
-        if stdout is not None:
-            stdout = stdout.decode(__terminal_encoding)
-        if stderr is not None:
-            stderr = stderr.decode(__terminal_encoding)
+def _agnostic_communicate(p, write_to_terminal = True):
+    """We only read from stderr because ffmpeg only prints to stderr
+    Things get much more complicated if we need to read from both!
+    """    
+    stderr = ''
+    local_buffer = ''
+    while True:
+        out = p.stderr.read(100)
+        
+        # decode if it's a bytes string due to Python 3
+        if six.PY3:
+            out = out.decode('utf-8')
+        stderr += out
+        
+        # fancy code for nicely printing to the terminal
+        if write_to_terminal:
+            # find last occurance of \r or \n
+            pos1 = out.rfind("\r")
+            pos2 = out.rfind("\n")
+            pos = max(pos1, pos2)
             
+            # if no new line character was printed, then add to the buffer
+            if pos == -1:
+                local_buffer += out
+            # print everything in the buffer and the text before the character
+            # save everything after the last \r|\n character in the local_buffer until we have the rest of the line
+            else:
+                local_buffer += out[:pos+1]
+                sys.stderr.write(local_buffer)
+                sys.stderr.flush()
+                local_buffer = out[pos+1:]
+                        
+        # if we hit end of file and the process has a return code, then break
+        if len(out) < 100 and p.poll() != None:
+            p.poll()
+        
+            # print anything left over in the local buffer
+            sys.stderr.write(local_buffer)
+            sys.stderr.flush()
+            break
+                
     # we don't need to keep hold of the process anymore (for passing along SIGTERM and SIGINT)
     # since the process is done
     _process_list.remove(p)
@@ -110,12 +167,12 @@ def _agnostic_communicate(p):
         if isinstance(p.autoscrub_command, six.string_types):
             command = p.autoscrub_command
         else:
-            command = ' '.join(p.autoscrub_command)
+            command = list2cmdline(p.autoscrub_command)
         
         # raise Exception
         raise AutoscrubException('The command "{}" failed to execute and exited with return code {}'.format(command, p.returncode))
             
-    return stdout, stderr
+    return '', stderr
 
     
 def hhmmssd_to_seconds(s):
@@ -862,11 +919,11 @@ def ffmpegComplexFilter(input_path, filter_script_path, output_path=NUL, run_com
     # command = ' '.join(command_list)
     print(' '.join(command_list))
     if run_command:
-        p = _agnostic_Popen(command_list, shell=False)
+        p = _agnostic_Popen(command_list, shell=False, stderr=PIPE)
         stdout, stderr = _agnostic_communicate(p)
         return output_path
     else:
-        return command_list
+        return list2cmdline(command_list)
 
 
 if __name__ == '__main__':
