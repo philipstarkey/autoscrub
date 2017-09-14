@@ -96,6 +96,7 @@ _option__delay = make_click_dict('--delay', default=0.25, type=float, help='The 
 _option__start = make_click_dict('--start', default=0, type=float, help='Content before this time is removed', show_default=True)
 _option__stop = make_click_dict('--stop', type=float, help='Content after this time is removed', show_default=True)
 _option__codec = make_click_dict('--re-encode', nargs=1, type=str, metavar='CODEC', help='Re-encode the file with the codec specified', show_default=True)
+_option__show_ff_output = make_click_dict('--show-ffmpeg-output', help="Prints the raw FFmpeg and FFprobe output to the terminal", is_flag=True)
 
 def create_filtergraph(input, filter_graph_path, speed, rescale, target_lufs, target_threshold, pan_audio, hasten_audio, silence_duration, delay, silent_volume):    
     folder, filename = os.path.split(input)
@@ -182,11 +183,17 @@ def version():
 @click.option(*_option__target_threshold[0], **_option__target_threshold[1])
 @click.option(*_option__silent_volume[0],    **_option__silent_volume[1])
 @click.option(*_option__delay[0],            **_option__delay[1])
+@click.option(*_option__show_ff_output[0],  **_option__show_ff_output[1])
 @click.option('--debug', help="Retains the generated filtergraph file for inspection", is_flag=True)
 @click.argument('input', type=click.Path(exists=True), metavar="input_filepath")
 @click.argument('output', type=click.Path(exists=False), metavar="output_filepath")
-def autoprocess(input, output, speed, rescale, target_lufs, target_threshold, pan_audio, hasten_audio, silence_duration, delay, silent_volume, debug):
+def autoprocess(input, output, speed, rescale, target_lufs, target_threshold, pan_audio, hasten_audio, silence_duration, delay, silent_volume, show_ffmpeg_output, debug):
     """automatically process the input video and write to the specified output file"""
+    
+    if show_ffmpeg_output:
+        autoscrub.suppress_ffmpeg_output(False)
+    else:
+        autoscrub.suppress_ffmpeg_output(True)
     
     # check executables exist
     check_ffmpeg()
@@ -230,10 +237,16 @@ def autoprocess(input, output, speed, rescale, target_lufs, target_threshold, pa
 
 @cli.command(name='loudness-adjust')
 @click.option(*_option__target_lufs[0], **_option__target_lufs[1])
+@click.option(*_option__show_ff_output[0],  **_option__show_ff_output[1])
 @click.argument('input', type=click.Path(exists=True), metavar="input_filepath")
 @click.argument('output', type=click.Path(exists=False), metavar="output_filepath")
-def match_loudness(input, output, target_lufs):
+def match_loudness(input, output, target_lufs, show_ffmpeg_output):
     """Adjusts the loudness of the input file"""
+    
+    if show_ffmpeg_output:
+        autoscrub.suppress_ffmpeg_output(False)
+    else:
+        autoscrub.suppress_ffmpeg_output(True)
     
     # check executables exist
     check_ffmpeg()
@@ -245,12 +258,22 @@ def match_loudness(input, output, target_lufs):
     input = os.path.abspath(input)
     output = os.path.abspath(output)
     
-    autoscrub.matchLoudness(input, target_lufs, output)
+    # check if output file exists and prompt
+    if os.path.exists(output):
+        click.confirm('The specified output file [{output}] already exists. Do you want to overrite?'.format(output=output), abort=True)
+    
+    autoscrub.matchLoudness(input, target_lufs, output, overwrite=True)
     
 @cli.command(name='display-video-properties')
+@click.option(*_option__show_ff_output[0],  **_option__show_ff_output[1])
 @click.argument('input', type=click.Path(exists=True), metavar="input_filepath")
-def get_properties(input):
+def get_properties(input, show_ffmpeg_output):
     """Displays properties about the input file"""
+    
+    if show_ffmpeg_output:
+        autoscrub.suppress_ffmpeg_output(False)
+    else:
+        autoscrub.suppress_ffmpeg_output(True)
     
     # check executables exist
     check_ffmpeg()
@@ -283,9 +306,15 @@ def get_properties(input):
 @cli.command(name='identify-silences')
 @click.option(*_option__silence_duration[0], **_option__silence_duration[1])
 @click.option(*_option__target_threshold[0], **_option__target_threshold[1])
+@click.option(*_option__show_ff_output[0],   **_option__show_ff_output[1])
 @click.argument('input', type=click.Path(exists=True), metavar="input_filepath")
-def get_silences(input, silence_duration, target_threshold):
+def get_silences(input, silence_duration, target_threshold, show_ffmpeg_output):
     """Displays a table of detected silent segments"""
+    
+    if show_ffmpeg_output:
+        autoscrub.suppress_ffmpeg_output(False)
+    else:
+        autoscrub.suppress_ffmpeg_output(True)
     
     # check executables exist
     check_ffmpeg()
@@ -312,10 +341,16 @@ def get_silences(input, silence_duration, target_threshold):
 @click.option(*_option__start[0], **_option__start[1])
 @click.option(*_option__stop[0],  **_option__stop[1])
 @click.option(*_option__codec[0], **_option__codec[1])
+@click.option(*_option__show_ff_output[0],  **_option__show_ff_output[1])
 @click.argument('input', type=click.Path(exists=True), metavar="input_filepath")
 @click.argument('output', type=click.Path(exists=False), metavar="output_filepath")
-def trim(input, output, start, stop, re_encode):
+def trim(input, output, start, stop, re_encode, show_ffmpeg_output):
     """removes unwanted content from the start and end of the input file"""
+    
+    if show_ffmpeg_output:
+        autoscrub.suppress_ffmpeg_output(False)
+    else:
+        autoscrub.suppress_ffmpeg_output(True)
     
     # check executables exist
     check_ffmpeg()
@@ -349,12 +384,18 @@ def trim(input, output, start, stop, re_encode):
 @click.option(*_option__target_threshold[0], **_option__target_threshold[1])
 @click.option(*_option__silent_volume[0],    **_option__silent_volume[1])
 @click.option(*_option__delay[0],            **_option__delay[1])
+@click.option(*_option__show_ff_output[0],   **_option__show_ff_output[1])
 @click.argument('input', type=click.Path(exists=True), metavar="input_filepath")
-def make_filtergraph(input, speed, rescale, target_lufs, target_threshold, pan_audio, hasten_audio, silence_duration, delay, silent_volume):
+def make_filtergraph(input, speed, rescale, target_lufs, target_threshold, pan_audio, hasten_audio, silence_duration, delay, silent_volume, show_ffmpeg_output):
     """Generates a filter-graph file for use with ffmpeg. 
     
     \b
     This command is useful if you want to manually edit the filter-graph file before processing your video."""
+    
+    if show_ffmpeg_output:
+        autoscrub.suppress_ffmpeg_output(False)
+    else:
+        autoscrub.suppress_ffmpeg_output(True)
     
     # check executables exist
     check_ffmpeg()
@@ -385,10 +426,16 @@ def make_filtergraph(input, speed, rescale, target_lufs, target_threshold, pan_a
     create_filtergraph(input, filter_graph_path, speed, rescale, target_lufs, target_threshold, pan_audio, hasten_audio, silence_duration, delay, silent_volume)
     
 @cli.command(name='process-filtergraph')
+@click.option(*_option__show_ff_output[0],  **_option__show_ff_output[1])
 @click.argument('input', type=click.Path(exists=True), metavar="input_filepath")
 @click.argument('output', type=click.Path(exists=False), metavar="output_filepath")
-def use_filtergraph(input, output):
+def use_filtergraph(input, output, show_ffmpeg_output):
     """Processes a video file using the filter-graph file created by the autoscrub make-filtergraph command"""
+    
+    if show_ffmpeg_output:
+        autoscrub.suppress_ffmpeg_output(False)
+    else:
+        autoscrub.suppress_ffmpeg_output(True)
     
     # check executables exist
     check_ffmpeg()

@@ -79,14 +79,34 @@ def set_terminal_encoding(encoding):
     :code:`subprocess.Popen`. This should match your system encoding, and
     is unlikely to need changing.
     """
+    global __terminal_encoding
     __terminal_encoding = encoding
 
+__suppress_output = False
+def suppress_ffmpeg_output(suppress):
+    """suppresses the output to the terminal from FFmpeg and FFprobe.
+    
+    Output is printed by default unless this function is called with the 
+    argument :code:`True`. Call with :code:`False` to enable terminal output
+    again.
+    
+    Arguments:
+        suppress: If :code:`True`, ffmpeg and ffprobe output will be 
+                  suppressed.
+    
+    """
+    global __suppress_output
+    __suppress_output = bool(suppress)
+    
 def _agnostic_Popen(*args, **kwargs):
     # sensible defaults for kwargs
     if 'shell' not in kwargs:
         kwargs['shell'] = False
-    if 'stdin' not in kwargs:
-        kwargs['stdin'] = PIPE
+        
+    # don't do this or else user won't be able to respond to ffmpeg prompts!!
+    # if 'stdin' not in kwargs:
+        # kwargs['stdin'] = PIPE
+        
     if 'stderr' not in kwargs:
         kwargs['stderr'] = PIPE
     if 'stdout' not in kwargs:
@@ -116,10 +136,15 @@ def _agnostic_Popen(*args, **kwargs):
         
     return p
 
-def _agnostic_communicate(p, write_to_terminal = True):
+def _agnostic_communicate(p, write_to_terminal = None):
     """We only read from stderr because ffmpeg only prints to stderr
     Things get much more complicated if we need to read from both!
     """    
+    
+    # use module wide setting if not explicitly defined
+    if write_to_terminal is None:
+        write_to_terminal = not __suppress_output
+    
     stderr = ''
     local_buffer = ''
     while True:
@@ -127,7 +152,7 @@ def _agnostic_communicate(p, write_to_terminal = True):
         
         # decode if it's a bytes string due to Python 3
         if six.PY3:
-            out = out.decode('utf-8')
+            out = out.decode(__terminal_encoding)
         stderr += out
         
         # fancy code for nicely printing to the terminal
@@ -153,8 +178,9 @@ def _agnostic_communicate(p, write_to_terminal = True):
             p.poll()
         
             # print anything left over in the local buffer
-            sys.stderr.write(local_buffer)
-            sys.stderr.flush()
+            if write_to_terminal:
+                sys.stderr.write(local_buffer)
+                sys.stderr.flush()
             break
                 
     # we don't need to keep hold of the process anymore (for passing along SIGTERM and SIGINT)
@@ -197,13 +223,13 @@ def ffprobe(filename):
     Returns:
         The output of the ffprobe command.
     """
-    command = 'ffprobe -i "%s"' % filename
+    command = ['ffprobe', '-i', "%s" % filename]
     p = _agnostic_Popen(command, stdout=PIPE, stderr=PIPE)
     stdout, stderr = _agnostic_communicate(p)
     return stderr
 
 
-def ffmpeg(filename, args=[], output_path=None, output_type=None):
+def ffmpeg(filename, args=[], output_path=None, output_type=None, overwrite=None):
     """Runs ffmpeg on filename with the specified args.
     
     Arguments:
@@ -215,24 +241,38 @@ def ffmpeg(filename, args=[], output_path=None, output_type=None):
         output_path: The filepath to append to the end of the ffmpeg command,
                      designating the output file for the ffmpeg result. If left
                      as the default (:code:`None`) it appends :code:`_processed`
-                     to the end of the filename and preserves input file extension unless :code:`output_type` is specified.
+                     to the end of the filename and preserves input file extension 
+                     unless :code:`output_type` is specified.
                      
         output_type: Determines the output file type. Specify as a string 
                      containing the required file extension. This is ignored if
                      :code:`output_path` is specified.
+                     
+        overwrite: If :code:`True`, overwrites the :code:`output_path` with no
+                   prompt. If :code:`False`, the function will fail if the
+                   :code:`output_path` exists. Defaults to :code:`None` 
+                   (prompts user for input). You must specify a value if you 
+                   have suppressed terminal output with 
+                   :func:`autoscrub.suppress_ffmpeg_output`
     
     Returns:
         The :code:`output_path` where the output of ffmpeg was written.
     """
-    command = ['ffmpeg', '-i', '%s' % filename.replace('\\', '/')]
+    command = ['ffmpeg', '-i', '%s' % filename]
     command += args
     if output_path is None:
         filename_prefix, file_extension = os.path.splitext(filename)
         if output_type is not None:
             file_extension = output_type
         output_path = filename_prefix + '_processed' + file_extension
-    command += ['%s' % output_path.replace('\\', '/')]
-    print(' '.join(command))
+        
+    if __suppress_output and overwrite is None:
+        raise RuntimeError("If ffmpeg output is suppressed, you must specify the overwrite keyword argument or else ffmpeg will hang on user input.")
+    if overwrite is not None:
+        command += ['-y'] if overwrite==True else ['-n']
+        
+    command += ['%s' % output_path]
+    print(list2cmdline(command))
     p = _agnostic_Popen(command)
     stdout, stderr = _agnostic_communicate(p)
     return output_path
@@ -341,7 +381,7 @@ def getSilences(filename, input_threshold_dB=-18.0, silence_duration=2.0, save_s
         silence_end:   the timestamp of the detected silent interval in seconds
         silence_duration:  duration of the silent interval in seconds
     """
-    command = 'ffmpeg -i "%s" -af silencedetect=n=%.1fdB:d=%s -f null %s' % (filename, input_threshold_dB, silence_duration, NUL)
+    command = ['ffmpeg', '-i', '%s'%filename, '-af', 'silencedetect=n=%.1fdB:d=%s'%(input_threshold_dB,silence_duration), '-f', 'null', '%s'%NUL]
     p = _agnostic_Popen(command, stdout=PIPE, stderr=PIPE)
     stdout, stderr = _agnostic_communicate(p)
     silences = findSilences(stderr)
@@ -396,13 +436,13 @@ def getLoudness(filename):
         LRA low:
         Threshold:        
     """
-    command = 'ffmpeg -i "%s" -c:v copy -af ebur128 -f null %s' % (filename, NUL)
+    command = ['ffmpeg', '-i', '%s'%filename, '-c:v', 'copy', '-af', 'ebur128', '-f', 'null', '%s'%NUL]
     p = _agnostic_Popen(command, stdout=PIPE, stderr=PIPE)
     stdout, stderr = _agnostic_communicate(p)
     return findLoudness(stderr)
 
 
-def matchLoudness(filename, target_lufs=-18, output_path=None):
+def matchLoudness(filename, target_lufs=-18, output_path=None, overwrite=None):
     """
     Applies the volume ffmpeg filter in an attempt to change the audio volume to match the specified target.
     
@@ -415,6 +455,14 @@ def matchLoudness(filename, target_lufs=-18, output_path=None):
         output_path: the filepath at which to write the resultant file. If no
                      output path is specified, it follows the conventions of
                      :func:`autoscrub.ffmpeg`.
+        
+        
+        overwrite: If :code:`True`, overwrites the :code:`output_path` with no
+                   prompt. If :code:`False`, the function will fail if the
+                   :code:`output_path` exists. Defaults to :code:`None` 
+                   (prompts user for input). You must specify a value if you 
+                   have suppressed terminal output with 
+                   :func:`autoscrub.suppress_ffmpeg_output`
                      
     Returns:
         The :code:`output_path` where the output of ffmpeg was written.
@@ -424,7 +472,7 @@ def matchLoudness(filename, target_lufs=-18, output_path=None):
     input_lufs = input_loudness['I']
     gain = target_lufs - input_lufs
     print('Input loudness = %.1f LUFS; Gain to apply = %.1f dB' % (input_lufs, gain))
-    output_path = ffmpeg(filename, ['-c:v', 'copy', '-af', 'volume=%.1fdB' % gain], output_path)
+    output_path = ffmpeg(filename, ['-c:v', 'copy', '-af', 'volume=%.1fdB' % gain], output_path, overwrite=overwrite)
     output_loudness = getLoudness(output_path)
     output_lufs = output_loudness['I']
     print('Output loudness = %.1f LUFS; Error = %.1f dB' % (output_lufs, target_lufs-output_lufs))
@@ -446,7 +494,12 @@ def trim(input_path, tstart=0, tstop=None, output_path=None, overwrite=None, cod
                
         output_path: Defaults to appending '_trimmed' to input_path
         
-        overwrite: Optionally specify addition of -y or -n flag to ffmpeg
+        overwrite: If :code:`True`, overwrites the :code:`output_path` with no
+                   prompt. If :code:`False`, the function will fail if the
+                   :code:`output_path` exists. Defaults to :code:`None` 
+                   (prompts user for input). You must specify a value if you 
+                   have suppressed terminal output with 
+                   :func:`autoscrub.suppress_ffmpeg_output`
         
         codec: Specify the codec to use in the encoding of the output file (default: copy).
         
@@ -462,7 +515,7 @@ def trim(input_path, tstart=0, tstop=None, output_path=None, overwrite=None, cod
         tstart = '%.4f' % float(tstart)
     if tstop and not isinstance(tstop, six.string_types):
         tstop = '%.4f' % float(tstop)
-    command = ['ffmpeg', '-i', filename]
+    command = ['ffmpeg', '-i', '%s'%input_path]
     if hhmmssd_to_seconds(tstart) > 0:
         command += ['-ss', tstart]
     if tstop is not None:
@@ -471,18 +524,20 @@ def trim(input_path, tstart=0, tstop=None, output_path=None, overwrite=None, cod
         command += ['-c', 'copy']
     else:
         command += codec
+    if __suppress_output and overwrite is None:
+        raise RuntimeError("If ffmpeg output is suppressed, you must specify the overwrite keyword argument or else ffmpeg will hang on user input.")
     if overwrite is not None:
         command.append('-y' if overwrite==True else '-n')
     if output_path is None:
-        filename_prefix, file_extension = os.path.splitext(filename)
+        filename_prefix, file_extension = os.path.splitext(input_path)
         if output_type is not None:
             file_extension = output_type
         output_path = filename_prefix + '_trimmed' + file_extension
     command.append(output_path)
     try:
-        p = _agnostic_Popen(command, cwd=folder if folder else '.')
+        p = _agnostic_Popen(command)
         stdout, stderr = _agnostic_communicate(p)
-        return os.path.join(folder, output_path)
+        return output_path
     except Exception as e:
         print(e)
         return None 
@@ -549,16 +604,21 @@ def concatFileList(concat_path, output_path, overwrite=None):
         overwrite: If :code:`True`, overwrites the :code:`output_path` with no
                    prompt. If :code:`False`, the function will fail if the
                    :code:`output_path` exists. Defaults to :code:`None` 
-                   (prompts user for input)
+                   (prompts user for input). You must specify a value if you 
+                   have suppressed terminal output with 
+                   :func:`autoscrub.suppress_ffmpeg_output`
                    
     Returns:
         :code:`output_path` if successful or :code:`None`.
     """
-    command = 'ffmpeg -safe 0 -f concat -i "%s" -c copy' % concat_path
+    command = ['ffmpeg', '-safe', '0', '-f', 'concat', '-i', '%s'%concat_path, '-c', 'copy']
+    if __suppress_output and overwrite is None:
+        raise RuntimeError("If ffmpeg output is suppressed, you must specify the overwrite keyword argument or else ffmpeg will hang on user input.")
     if overwrite is not None:
-        command += ' -y ' if overwrite==True else ' -n '
-    command += ' "%s"' % output_path
-    print(command)
+        command += ['-y'] if overwrite==True else ['-n']
+    command += ['%s' % output_path]
+    print('Running ffmpeg command:')
+    print(list2cmdline(command))
     try:
         p = _agnostic_Popen(command)
         stdout, stderr = _agnostic_communicate(p)
@@ -589,7 +649,9 @@ def concatSegments(segment_paths, output_path=None, overwrite=None):
         overwrite: If :code:`True`, overwrites the :code:`output_path` with no
                    prompt. If :code:`False`, the function will fail if the
                    :code:`output_path` exists. Defaults to :code:`None` 
-                   (prompts user for input).
+                   (prompts user for input). You must specify a value if you 
+                   have suppressed terminal output with 
+                   :func:`autoscrub.suppress_ffmpeg_output`
                    
     Returns:
         The :code:`output_path` where the output of ffmpeg was written.
@@ -858,6 +920,8 @@ def generateFilterGraph(silences, factor, delay=0.25, rescale=True, pan_audio='l
 def writeFilterGraph(filter_script_path, silences, factor, **kwargs):
     """Generates a filtergraph string (using :func:`autoscrub.generateFilterGraph`) and writes it to a file.
     
+    .. note::Overwrites the file if it already exists without prompting.
+    
     Arguments:
         filter_script_path: Path to save the filter script .
         
@@ -898,8 +962,12 @@ def ffmpegComplexFilter(input_path, filter_script_path, output_path=NUL, run_com
         run_command: If False, simply prepare and return the command for 
                      debugging or later use (default: True).
                      
-        overwrite: Optionally specify addition of -y or -n flag to ffmpeg
-                   which is useful for unattended scripting (default None).
+        overwrite: If :code:`True`, overwrites the :code:`output_path` with no
+                   prompt. If :code:`False`, the function will fail if the
+                   :code:`output_path` exists. Defaults to :code:`None` 
+                   (prompts user for input). You must specify a value if you 
+                   have suppressed terminal output with 
+                   :func:`autoscrub.suppress_ffmpeg_output`
                    
     Returns:
         :code:`output_path` if :code:`run_command=True` otherwise returns the command sequence (to be passed to :code:`subprocess.Popen` or formatted into a string for printing).
@@ -910,16 +978,20 @@ def ffmpegComplexFilter(input_path, filter_script_path, output_path=NUL, run_com
     youtube_other = ['-strict', '-2']
     filter_command = ['-filter_complex_script', '%s'%filter_script_path, '-map', '[v]', '-map', '[a]'] 
     tail = ["%s" % output_path]
+    
+    if __suppress_output and overwrite is None:
+        raise RuntimeError("If ffmpeg output is suppressed, you must specify the overwrite keyword argument or else ffmpeg will hang on user input.")
     if overwrite is not None:
         if overwrite:
             tail.insert(0, '-y')
         else:
             tail.insert(0, '-n')
     command_list = header + youtube_video + youtube_audio + youtube_other + filter_command + tail
-    # command = ' '.join(command_list)
-    print(' '.join(command_list))
+    
     if run_command:
-        p = _agnostic_Popen(command_list, shell=False, stderr=PIPE)
+        print('Running ffmpeg command:')
+        print(list2cmdline(command_list))
+        p = _agnostic_Popen(command_list)
         stdout, stderr = _agnostic_communicate(p)
         return output_path
     else:
