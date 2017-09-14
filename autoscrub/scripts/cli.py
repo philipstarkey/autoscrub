@@ -18,6 +18,7 @@
 import tempfile
 import os
 import subprocess
+import time
 
 import autoscrub
 import click
@@ -67,6 +68,42 @@ def check_for_new_autoscrub_version():
     
     return False
 
+
+# code for printing percentage complete
+class NewLineCallback(object):
+    def __init__(self, duration, bar):
+        self.time_since_last_print = time.time()
+        self.update_every_n_seconds = 1
+        # self.start_time = time.time()
+        self.duration = duration
+        self.bar = bar
+        self.bar_history = 0
+        
+    def new_line_callback(self, line):
+        # Only update every N seconds
+        if time.time() - self.time_since_last_print < self.update_every_n_seconds:
+            return
+        # ignore (for speed since this interrupts reading the output from the subprocess) if the line doesn't contain what we want
+        if 'time=' not in line:
+            return
+               
+        try:
+            # get time text
+            time_text = line.split('time=')[-1].split(' ')[0]
+            # speed_text = line.split('speed=')[-1].split('x')[0]            
+            # speed = float(speed_text)
+            
+            #format it into seconds
+            seconds = autoscrub.hhmmssd_to_seconds(time_text)
+            # hack because the bar.update method takes the number of steps to increase, not the current position
+            percentage = int(float(seconds)/self.duration*100)
+            self.bar.update(percentage - self.bar_history)
+            self.bar_history = percentage
+        except Exception:
+            click.echo("could not determine percentage completion. Consider not suppressing the FFmpeg output by running autoscrub with the option --show-ffmpeg-output")
+        else:
+            self.time_since_last_print = time.time()
+    
 def format_nice_time(t_in_seconds):
     t_in_seconds = float(t_in_seconds)
     
@@ -146,6 +183,8 @@ def create_filtergraph(input, filter_graph_path, speed, rescale, target_lufs, ta
     # Generate the filtergraph
     click.echo('\nGenerating ffmpeg filter_complex script...')
     autoscrub.writeFilterGraph(filter_graph_path, silences, factor=speed, audio_rate=input_sample_rate, pan_audio=pan_audio, gain=gain, rescale=rescale, hasten_audio=hasten_audio, delay=delay, silent_volume=silent_volume)
+    
+    return silences
 
 @click.group()
 def cli():
@@ -223,10 +262,33 @@ def autoprocess(input, output, speed, rescale, target_lufs, target_threshold, pa
     # Python returns an open handle which we don't want, so close it
     os.close(handle)
 
-    create_filtergraph(input, filter_graph_path, speed, rescale, target_lufs, target_threshold, pan_audio, hasten_audio, silence_duration, delay, silent_volume)
+    silences = create_filtergraph(input, filter_graph_path, speed, rescale, target_lufs, target_threshold, pan_audio, hasten_audio, silence_duration, delay, silent_volume)
     
-    # Process the video file using ffmpeg and the filtergraph
-    result = autoscrub.ffmpegComplexFilter(input, filter_graph_path, output, run_command=True, overwrite=True)
+    estimated_duration = autoscrub.getDuration(input)
+    for silence in silences:
+        if 'silence_duration' in silence:
+            estimated_duration -= (silence['silence_duration']-2*delay)*(1-1.0/speed)
+            
+    click.echo("\nautoscrubbing video")
+    # commented out because it's a bit confusing and could be incorrectly interpretted as the estimated conversion time, not video duration
+    # click.echo("Estimated duration of autoscrubbed video is {}".format(format_nice_time(estimated_duration)))
+    
+    with click.progressbar(length=100) as bar:
+        nlc = NewLineCallback(estimated_duration, bar)
+        if not show_ffmpeg_output:
+            callback = nlc.new_line_callback
+        else:
+            callback = None
+        
+        # Process the video file using ffmpeg and the filtergraph
+        result = autoscrub.ffmpegComplexFilter(input, filter_graph_path, output, run_command=True, overwrite=True, stderr_callback=callback)
+        
+        # update the bar to 100%
+        bar.update(100) # this increments the bar position by 100, but it achieves the same thing!
+        
+        click.echo("\nDone!")
+        click.echo("FFmpeg command run was: ")
+        click.echo(subprocess.list2cmdline(result))
         
     # delete the filtergraph temporary file unless we are debugging
     if not debug:

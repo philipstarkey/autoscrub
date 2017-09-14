@@ -136,7 +136,7 @@ def _agnostic_Popen(*args, **kwargs):
         
     return p
 
-def _agnostic_communicate(p, write_to_terminal = None):
+def _agnostic_communicate(p, write_to_terminal = None, new_line_callback=None):
     """We only read from stderr because ffmpeg only prints to stderr
     Things get much more complicated if we need to read from both!
     """    
@@ -156,22 +156,27 @@ def _agnostic_communicate(p, write_to_terminal = None):
         stderr += out
         
         # fancy code for nicely printing to the terminal
-        if write_to_terminal:
-            # find last occurance of \r or \n
-            pos1 = out.rfind("\r")
-            pos2 = out.rfind("\n")
-            pos = max(pos1, pos2)
+        # find last occurance of \r or \n
+        pos1 = out.rfind("\r")
+        pos2 = out.rfind("\n")
+        pos = max(pos1, pos2)
+        
+        # if no new line character was printed, then add to the buffer
+        if pos == -1:
+            local_buffer += out
+        # print everything in the buffer and the text before the character
+        # save everything after the last \r|\n character in the local_buffer until we have the rest of the line
+        else:
+            local_buffer += out[:pos+1]
             
-            # if no new line character was printed, then add to the buffer
-            if pos == -1:
-                local_buffer += out
-            # print everything in the buffer and the text before the character
-            # save everything after the last \r|\n character in the local_buffer until we have the rest of the line
-            else:
-                local_buffer += out[:pos+1]
+            # print to terminal if requested
+            if write_to_terminal:
                 sys.stderr.write(local_buffer)
                 sys.stderr.flush()
-                local_buffer = out[pos+1:]
+            # send to callback is present
+            if new_line_callback:
+                new_line_callback(local_buffer)
+            local_buffer = out[pos+1:]
                         
         # if we hit end of file and the process has a return code, then break
         if len(out) < 100 and p.poll() != None:
@@ -940,7 +945,7 @@ def writeFilterGraph(filter_script_path, silences, factor, **kwargs):
         f.write(filter_graph)
 
 
-def ffmpegComplexFilter(input_path, filter_script_path, output_path=NUL, run_command=True, overwrite=None):
+def ffmpegComplexFilter(input_path, filter_script_path, output_path=NUL, run_command=True, overwrite=None, stderr_callback=None):
     """Executes the ffmpeg command and processes a complex filter
     
     Prepare and execute (if run_command) ffmpeg command for processing 
@@ -969,8 +974,13 @@ def ffmpegComplexFilter(input_path, filter_script_path, output_path=NUL, run_com
                    have suppressed terminal output with 
                    :func:`autoscrub.suppress_ffmpeg_output`
                    
+        stderr_callback: A reference to a python function to be called when a 
+                         new line is printed to stderr by ffmpeg. Useful for 
+                         monitoring the progress of ffmpeg in realtime.
+                         Defaults to None.
+                   
     Returns:
-        :code:`output_path` if :code:`run_command=True` otherwise returns the command sequence (to be passed to :code:`subprocess.Popen` or formatted into a string for printing).
+        the FFmpeg command sequence as a list (to be passed to :code:`subprocess.Popen` or formatted into a string for printing).
     """
     header = ['ffmpeg', '-i', '%s'% input_path] 
     youtube_video = ['-c:v', 'libx264', '-crf', '20', '-bf', '2', '-flags', '+cgop', '-g', '15', '-pix_fmt', 'yuv420p', '-movflags', '+faststart'] # -tune stillimage
@@ -989,13 +999,14 @@ def ffmpegComplexFilter(input_path, filter_script_path, output_path=NUL, run_com
     command_list = header + youtube_video + youtube_audio + youtube_other + filter_command + tail
     
     if run_command:
-        print('Running ffmpeg command:')
-        print(list2cmdline(command_list))
+        # print('Running ffmpeg command:')
+        # print(list2cmdline(command_list))
         p = _agnostic_Popen(command_list)
-        stdout, stderr = _agnostic_communicate(p)
-        return output_path
-    else:
-        return list2cmdline(command_list)
+        stdout, stderr = _agnostic_communicate(p, new_line_callback=stderr_callback)
+        # return output_path
+    # else:
+        # return list2cmdline(command_list)
+    return command_list
 
 
 if __name__ == '__main__':
