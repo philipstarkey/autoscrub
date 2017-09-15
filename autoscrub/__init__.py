@@ -282,7 +282,7 @@ class _NewLineCallback(object):
                 silence_text = line.split("silence_start: ")[-1]
                 sys.stdout.write("Found a new silent segment starting at %s"%silence_text)
             except Exception:
-                raise
+                pass
             else:
                 self.time_since_last_print = time.time()
         elif "time=" in line:
