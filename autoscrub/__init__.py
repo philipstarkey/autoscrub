@@ -25,6 +25,7 @@ import os
 import sys
 import re
 import six
+import time
 if six.PY3:
     from subprocess import Popen, call, PIPE, list2cmdline
     if sys.platform.startswith('win'):
@@ -46,10 +47,11 @@ class AutoscrubException(Exception):
     pass
 
     
-# setup signal handling to terminate ffmpeg/ffprobe subprocesses when
+# setup signal handling to terminate subprocesses when
 # this process is terminated
 _previous_sigint = signal.getsignal(signal.SIGINT)
 _previous_sigterm = signal.getsignal(signal.SIGTERM)
+# _previous_sigkill = signal.getsignal(signal.SIGKILL)
 _process_list = []
 def _kill_autoscrub_processes(signum, frame):
     for p in _process_list:
@@ -60,14 +62,17 @@ def _kill_autoscrub_processes(signum, frame):
 
     if signum == signal.SIGINT and _previous_sigint not in [None, signal.SIG_IGN, signal.SIG_DFL]:
         _previous_sigint(signum, frame)
-    if signum == signal.SIGTERM and _previous_sigint not in [None, signal.SIG_IGN, signal.SIG_DFL]:
+    if signum == signal.SIGTERM and _previous_sigterm not in [None, signal.SIG_IGN, signal.SIG_DFL]:
         _previous_sigterm(signum, frame)
+    # if signum == signal.SIGKILL and _previous_sigkill not in [None, signal.SIG_IGN, signal.SIG_DFL]:
+        # _previous_sigkill(signum, frame)
         
     # force terminate
     os._exit(1) 
         
 signal.signal(signal.SIGINT, _kill_autoscrub_processes)
 signal.signal(signal.SIGTERM, _kill_autoscrub_processes)
+# signal.signal(signal.SIGKILL, _kill_autoscrub_processes)
     
 __terminal_encoding = 'utf-8'
 def set_terminal_encoding(encoding):
@@ -113,6 +118,7 @@ def _agnostic_Popen(*args, **kwargs):
         kwargs['stdout'] = PIPE
                 
     # Launch the subprocess as a new subprocess group in order to
+    # stop the subprocess from capturing the stdin
     if sys.platform.startswith('win'):
         if 'creationflags' not in kwargs:
             kwargs['creationflags'] = CREATE_NEW_PROCESS_GROUP
@@ -209,6 +215,8 @@ def _agnostic_communicate(p, write_to_terminal = None, new_line_callback=None):
 def hhmmssd_to_seconds(s):
     """Convert a :code:`'[hh:]mm:ss[.d]'` string to seconds. 
     
+    The reverse of :func:`autoscrub.seconds_to_hhmmssd`
+    
     Arguments:
         s: A string in the format :code:`'[hh:]mm:ss[.d]'`. The hours and decimal seconds are optional.
     
@@ -218,7 +226,85 @@ def hhmmssd_to_seconds(s):
     assert isinstance(s, six.string_types)
     return reduce(lambda t60, x: t60 * 60 + x, map(float, s.split(':')))
 
+def seconds_to_hhmmssd(t, decimal=True):
+    """Convert a float (in seconds) to a :code:`'[hh:]mm:ss[.d]'` formatted string. 
+    
+    The reverse of :func:`autoscrub.hhmmssd_to_seconds`
+    
+    Arguments:
+        t:  The number of seconds as a float
+    
+    Keyword Arguments:
+        decimal: Whether to include the decimal component (default: True)
+    
+    Returns:
+        The number of seconds as a :code:`'[hh:]mm:ss[.d]'` formatted string.
+    """
+    t = float(t)
+    
+    # handle negative time
+    s = ''
+    if t < 0:
+        s = '-'
+        t *= -1
 
+    hours, remainder = divmod(t, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    s += '{:02d}:{:02d}'.format(int(hours), int(minutes))
+    if not decimal:
+        s+=':{:02d}'.format(int(seconds))
+    else:
+        s+=':{:06.3f}'.format(seconds)
+    return s
+
+class _NewLineCallback(object):
+    def __init__(self, duration = None, update_every_n_seconds = 3, prefix=""):
+        self.time_since_last_print = time.time()
+        self.update_every_n_seconds = update_every_n_seconds
+        self.start_time = time.time()
+        self.duration = duration
+        self.last_percentage = 0
+        self.prefix = (prefix + " ") if prefix else prefix
+        
+    def new_line_callback(self, line):    
+        try:
+            if self.duration is None and "Duration:" in line:
+                self.duration = hhmmssd_to_seconds(line.split("Duration: ")[-1].split(",")[0])
+        except Exception:
+            pass
+            
+        # Only update every N seconds
+        if time.time() - self.time_since_last_print < self.update_every_n_seconds:
+            return
+            
+        if self.duration is None and "silence_start:" in line:
+            try:
+                silence_text = line.split("silence_start: ")[-1]
+                sys.stdout.write("Found a new silent segment starting at %s"%silence_text)
+            except Exception:
+                raise
+            else:
+                self.time_since_last_print = time.time()
+        elif "time=" in line:
+            try:
+                # get time text
+                time_text = line.split('time=')[-1].split(' ')[0]
+                                    
+                #format it into seconds
+                seconds = hhmmssd_to_seconds(time_text)
+                percentage = float(seconds)/self.duration*100
+                
+                time_remaining = (time.time()-self.start_time)/percentage*(100-percentage)
+                
+                if self.last_percentage != int(percentage):
+                    print("{}{:d}% complete [{} remaining]".format(self.prefix, int(percentage), seconds_to_hhmmssd(time_remaining, decimal=False)))
+                    self.last_percentage = int(percentage)
+            except Exception:
+                print("could not determine percentage completion. Consider not suppressing the FFmpeg output.")
+            else:
+                self.time_since_last_print = time.time()
+    
+    
 def ffprobe(filename):
     """Runs ffprobe on :code:`filename` and returns the log output from stderr.
     
@@ -388,7 +474,13 @@ def getSilences(filename, input_threshold_dB=-18.0, silence_duration=2.0, save_s
     """
     command = ['ffmpeg', '-i', '%s'%filename, '-af', 'silencedetect=n=%.1fdB:d=%s'%(input_threshold_dB,silence_duration), '-f', 'null', '%s'%NUL]
     p = _agnostic_Popen(command, stdout=PIPE, stderr=PIPE)
-    stdout, stderr = _agnostic_communicate(p)
+    # Print a percentage complete message to the terminal if output is suppressed
+    if __suppress_output:
+        nlc = _NewLineCallback(update_every_n_seconds=2, prefix="Silence search")
+        callback = nlc.new_line_callback
+    else:
+        callback = None
+    stdout, stderr = _agnostic_communicate(p, new_line_callback = callback)
     silences = findSilences(stderr)
     if save_silences:
         filename_prefix, file_extension = os.path.splitext(filename)

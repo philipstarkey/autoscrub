@@ -71,13 +71,12 @@ def check_for_new_autoscrub_version():
 
 # code for printing percentage complete
 class NewLineCallback(object):
-    def __init__(self, duration, bar):
+    def __init__(self, duration):
         self.time_since_last_print = time.time()
-        self.update_every_n_seconds = 1
-        # self.start_time = time.time()
+        self.update_every_n_seconds = 3
+        self.start_time = time.time()
         self.duration = duration
-        self.bar = bar
-        self.bar_history = 0
+        self.last_percentage = 0
         
     def new_line_callback(self, line):
         # Only update every N seconds
@@ -96,27 +95,19 @@ class NewLineCallback(object):
             #format it into seconds
             seconds = autoscrub.hhmmssd_to_seconds(time_text)
             # hack because the bar.update method takes the number of steps to increase, not the current position
-            percentage = int(float(seconds)/self.duration*100)
-            self.bar.update(percentage - self.bar_history)
-            self.bar_history = percentage
+            percentage = float(seconds)/self.duration*100
+            
+            time_remaining = (time.time()-self.start_time)/percentage*(100-percentage)
+            
+            if self.last_percentage != int(percentage):
+                click.echo("{:d}% complete [{} remaining]".format(int(percentage), autoscrub.seconds_to_hhmmssd(time_remaining, decimal=False)))
+                self.last_percentage = int(percentage)
         except Exception:
+            raise
             click.echo("could not determine percentage completion. Consider not suppressing the FFmpeg output by running autoscrub with the option --show-ffmpeg-output")
         else:
             self.time_since_last_print = time.time()
     
-def format_nice_time(t_in_seconds):
-    t_in_seconds = float(t_in_seconds)
-    
-    # handle negative time
-    s = ''
-    if t_in_seconds < 0:
-        s = '-'
-        t_in_seconds *= -1
-
-    hours, remainder = divmod(t_in_seconds, 3600)
-    minutes, seconds = divmod(remainder, 60)
-    s += '{:02d}:{:02d}:{:06.3f}'.format(int(hours), int(minutes), seconds)
-    return s
 
 def make_click_dict(*args, **kwargs):    
     return (args, kwargs)
@@ -271,24 +262,21 @@ def autoprocess(input, output, speed, rescale, target_lufs, target_threshold, pa
             
     click.echo("\nautoscrubbing video")
     # commented out because it's a bit confusing and could be incorrectly interpretted as the estimated conversion time, not video duration
-    # click.echo("Estimated duration of autoscrubbed video is {}".format(format_nice_time(estimated_duration)))
+    # click.echo("Estimated duration of autoscrubbed video is {}".format(autoscrub.seconds_to_hhmmssd(estimated_duration)))
     
-    with click.progressbar(length=100) as bar:
-        nlc = NewLineCallback(estimated_duration, bar)
-        if not show_ffmpeg_output:
-            callback = nlc.new_line_callback
-        else:
-            callback = None
-        
-        # Process the video file using ffmpeg and the filtergraph
-        result = autoscrub.ffmpegComplexFilter(input, filter_graph_path, output, run_command=True, overwrite=True, stderr_callback=callback)
-        
-        # update the bar to 100%
-        bar.update(100) # this increments the bar position by 100, but it achieves the same thing!
-        
-        click.echo("\nDone!")
-        click.echo("FFmpeg command run was: ")
-        click.echo(subprocess.list2cmdline(result))
+    nlc = NewLineCallback(estimated_duration)
+    if not show_ffmpeg_output:
+        callback = nlc.new_line_callback
+    else:
+        callback = None
+    
+    # Process the video file using ffmpeg and the filtergraph
+    result = autoscrub.ffmpegComplexFilter(input, filter_graph_path, output, run_command=True, overwrite=True, stderr_callback=callback)
+    
+    
+    click.echo("\nDone!")
+    click.echo("FFmpeg command run was: ")
+    click.echo(subprocess.list2cmdline(result))
         
     # delete the filtergraph temporary file unless we are debugging
     if not debug:
@@ -394,9 +382,9 @@ def get_silences(input, silence_duration, target_threshold, show_ffmpeg_output):
     
     click.echo("#\tstart   \tend     \tduration")
     for i, silence in enumerate(silences):
-        ti = format_nice_time(silence['silence_start'])
-        tf = format_nice_time(silence['silence_end']) if 'silence_end' in silence else ''
-        dt = format_nice_time(silence['silence_duration']) if 'silence_duration' in silence else ''
+        ti = autoscrub.seconds_to_hhmmssd(silence['silence_start'])
+        tf = autoscrub.seconds_to_hhmmssd(silence['silence_end']) if 'silence_end' in silence else ''
+        dt = autoscrub.seconds_to_hhmmssd(silence['silence_duration']) if 'silence_duration' in silence else ''
         click.echo("{num}\t{start}\t{end}\t{duration}".format(num=i, start=ti, end=tf, duration=dt))
     
 @cli.command()
