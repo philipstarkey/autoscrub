@@ -73,7 +73,7 @@ def check_for_new_autoscrub_version():
 class NewLineCallback(object):
     def __init__(self, duration):
         self.time_since_last_print = time.time()
-        self.update_every_n_seconds = 3
+        self.update_every_n_seconds = 1
         self.start_time = time.time()
         self.duration = duration
         self.last_percentage = 0
@@ -100,7 +100,7 @@ class NewLineCallback(object):
             time_remaining = (time.time()-self.start_time)/percentage*(100-percentage)
             
             if self.last_percentage != int(percentage):
-                click.echo("{:d}% complete [{} remaining]".format(int(percentage), autoscrub.seconds_to_hhmmssd(time_remaining, decimal=False)))
+                click.echo("{:d}% complete [{} remaining]\r".format(int(percentage), autoscrub.seconds_to_hhmmssd(time_remaining, decimal=False)), nl=False)
                 self.last_percentage = int(percentage)
         except Exception:
             raise
