@@ -164,8 +164,8 @@ def create_filtergraph(input, filter_graph_path, speed, rescale, target_lufs, ta
     # find silent segments
     click.echo('\nSearching for silence...')
     silences = autoscrub.getSilences(input, input_threshold_dB, silence_duration, False)
-    if silences:
-        durations = [s['silence_duration'] for s in silences if 'silence_duration' in s]
+    durations = [s['silence_duration'] for s in silences if 'silence_duration' in s]
+    if len(durations):
         mean_duration = sum(durations)/len(durations)
         click.echo('Found %i silences of average duration %.1f seconds.' % (len(silences), mean_duration))
     else:
