@@ -1011,8 +1011,7 @@ def generateFilterGraph(silences, factor, delay=0.25, rescale=True, pan_audio='l
                         v_out='[vn]' if rescale else '[v]', a_out='[an]' if gain or pan_audio else '[a]')
     if rescale is True:
         filter_graph += '\n' + resizeFilterGraph(v_in='[vn]')
-    elif isinstance(rescale, list) or isinstance(rescale, tuple):
-        assert len(rescale) == 2
+    elif isinstance(rescale, list) or isinstance(rescale, tuple) and len(rescale) == 2:
         filter_graph += '\n' + resizeFilterGraph(v_in='[vn]', width=rescale[0], height=rescale[1])
     elif isinstance(rescale, dict):
         assert 'width' in rescale and 'height' in rescale

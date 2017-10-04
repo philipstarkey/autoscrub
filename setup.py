@@ -19,7 +19,7 @@ import os
 from setuptools import setup, find_packages
 
 
-VERSION = '0.6.0'
+VERSION = '0.6.1'
 # Auto generate a __version__ package for the package to import
 with open(os.path.join('autoscrub', '__version__.py'), 'w') as f:
     f.write("__version__ = '%s'\n" % VERSION)
