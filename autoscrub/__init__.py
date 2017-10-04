@@ -297,7 +297,7 @@ class _NewLineCallback(object):
                 time_remaining = (time.time()-self.start_time)/percentage*(100-percentage)
                 
                 if self.last_percentage != int(percentage):
-                    print("{}{:d}% complete [{} remaining]".format(self.prefix, int(percentage), seconds_to_hhmmssd(time_remaining, decimal=False)))
+                    print("{}{:3d}% complete [{} remaining]".format(self.prefix, int(percentage), seconds_to_hhmmssd(time_remaining, decimal=False)))
                     self.last_percentage = int(percentage)
             except Exception:
                 print("could not determine percentage completion. Consider not suppressing the FFmpeg output.")
@@ -1005,8 +1005,14 @@ def generateFilterGraph(silences, factor, delay=0.25, rescale=True, pan_audio='l
     """
     filter_graph = silenceFilterGraph(silences, factor, audio_rate=audio_rate, hasten_audio=hasten_audio, silent_volume=silent_volume, delay=delay,
                         v_out='[vn]' if rescale else '[v]', a_out='[an]' if gain or pan_audio else '[a]')
-    if rescale:
+    if rescale is True:
         filter_graph += '\n' + resizeFilterGraph(v_in='[vn]')
+    elif isinstance(rescale, list) or isinstance(rescale, tuple):
+        assert len(rescale) == 2
+        filter_graph += '\n' + resizeFilterGraph(v_in='[vn]', width=rescale[0], height=rescale[1])
+    elif isinstance(rescale, dict):
+        assert 'width' in rescale and 'height' in rescale
+        filter_graph += '\n' + resizeFilterGraph(v_in='[vn]', width=rescale['width'], height=rescale['height'])
     if pan_audio or gain:
         filter_graph += '\n' + panGainAudioGraph(a_in='[an]', duplicate_ch=pan_audio, gain=gain)
     if filter_graph.endswith(';'):

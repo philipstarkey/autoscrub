@@ -100,11 +100,11 @@ class NewLineCallback(object):
             time_remaining = (time.time()-self.start_time)/percentage*(100-percentage)
             
             if self.last_percentage != int(percentage):
-                click.echo("{:d}% complete [{} remaining]\r".format(int(percentage), autoscrub.seconds_to_hhmmssd(time_remaining, decimal=False)), nl=False)
+                click.echo("{:3d}% complete [{} remaining]\r".format(int(percentage), autoscrub.seconds_to_hhmmssd(time_remaining, decimal=False)), nl=False)
                 self.last_percentage = int(percentage)
         except Exception:
             raise
-            click.echo("could not determine percentage completion. Consider not suppressing the FFmpeg output by running autoscrub with the option --show-ffmpeg-output")
+            click.echo("Could not determine percentage completion. Consider not suppressing the FFmpeg output by running autoscrub with the option --show-ffmpeg-output")
         else:
             self.time_since_last_print = time.time()
     
