@@ -482,9 +482,10 @@ def getSilences(filename, input_threshold_dB=-18.0, silence_duration=2.0, save_s
     else:
         callback = None
     stdout, stderr = _agnostic_communicate(p, new_line_callback=callback)
-    seconds_taken = time.time() - callback.im_self.start_time
-    time_taken = autoscrub.seconds_to_hhmmssd(seconds_taken, decimal=False)
-    print("[ffmpeg:silencedetect] Completed in {} ({:.1f}x speed)   ".format(time_taken, estimated_duration/seconds_taken))
+    start_time = callback.__self__.start_time if six.PY3 else callback.im_self.start_time
+    seconds_taken = time.time() - start_time
+    time_taken = seconds_to_hhmmssd(seconds_taken, decimal=False)
+    print("[ffmpeg:silencedetect] Completed in {}                   ".format(time_taken))
     silences = findSilences(stderr)
     if save_silences:
         filename_prefix, file_extension = os.path.splitext(filename)

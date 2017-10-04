@@ -272,7 +272,8 @@ def autoprocess(input, output, speed, rescale, target_lufs, target_threshold, pa
     
     # Process the video file using ffmpeg and the filtergraph
     result = autoscrub.ffmpegComplexFilter(input, filter_graph_path, output, run_command=True, overwrite=True, stderr_callback=callback)
-    seconds_taken = time.time() - callback.im_self.start_time
+    start_time = callback.__self__.start_time if autoscrub.six.PY3 else callback.im_self.start_time
+    seconds_taken = time.time() - start_time
     time_taken = autoscrub.seconds_to_hhmmssd(seconds_taken, decimal=False)
     click.echo("[ffmpeg:filter_complex_script] Completed in {} ({:.1f}x speed)   ".format(time_taken, estimated_duration/seconds_taken))
     click.echo("[autoscrub:info] Done!")
