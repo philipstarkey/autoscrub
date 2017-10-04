@@ -15,6 +15,7 @@
 # You should have received a copy of the GNU General Public License
 # along with autoscrub.  If not, see <http://www.gnu.org/licenses/>.
 
+from __future__ import print_function
 try:
     from __version__ import __version__
 except ImportError:
@@ -207,7 +208,7 @@ def _agnostic_communicate(p, write_to_terminal = None, new_line_callback=None):
             command = list2cmdline(p.autoscrub_command)
         
         # raise Exception
-        raise AutoscrubException('The command "{}" failed to execute and exited with return code {}'.format(command, p.returncode))
+        raise AutoscrubException('[autoscrub:error] The command "{}" failed to execute and exited with return code {}'.format(command, p.returncode))
             
     return '', stderr
 
@@ -258,7 +259,7 @@ def seconds_to_hhmmssd(t, decimal=True):
     return s
 
 class _NewLineCallback(object):
-    def __init__(self, duration = None, update_every_n_seconds = 3, prefix=""):
+    def __init__(self, duration=None, update_every_n_seconds=3, prefix=""):
         self.time_since_last_print = time.time()
         self.update_every_n_seconds = update_every_n_seconds
         self.start_time = time.time()
@@ -292,15 +293,15 @@ class _NewLineCallback(object):
                                     
                 #format it into seconds
                 seconds = hhmmssd_to_seconds(time_text)
-                percentage = float(seconds)/self.duration*100
+                percentage = min(float(seconds)/self.duration, 1)*100
                 
                 time_remaining = (time.time()-self.start_time)/percentage*(100-percentage)
                 
                 if self.last_percentage != int(percentage):
-                    print("{}{:3d}% complete [{} remaining]".format(self.prefix, int(percentage), seconds_to_hhmmssd(time_remaining, decimal=False)))
+                    print("{}{:3d}% complete [{} remaining]".format(self.prefix, int(percentage), seconds_to_hhmmssd(time_remaining, decimal=False)), end="\r")
                     self.last_percentage = int(percentage)
             except Exception:
-                print("could not determine percentage completion. Consider not suppressing the FFmpeg output.")
+                print("[autoscrub:warning] Could not determine percentage completion. Consider not suppressing the FFmpeg output.")
             else:
                 self.time_since_last_print = time.time()
     
@@ -358,7 +359,7 @@ def ffmpeg(filename, args=[], output_path=None, output_type=None, overwrite=None
         output_path = filename_prefix + '_processed' + file_extension
         
     if __suppress_output and overwrite is None:
-        raise RuntimeError("If ffmpeg output is suppressed, you must specify the overwrite keyword argument or else ffmpeg will hang on user input.")
+        raise RuntimeError("[autoscrub:error] If ffmpeg output is suppressed, you must specify the overwrite keyword argument or else ffmpeg will hang on user input.")
     if overwrite is not None:
         command += ['-y'] if overwrite==True else ['-n']
         
@@ -476,11 +477,14 @@ def getSilences(filename, input_threshold_dB=-18.0, silence_duration=2.0, save_s
     p = _agnostic_Popen(command, stdout=PIPE, stderr=PIPE)
     # Print a percentage complete message to the terminal if output is suppressed
     if __suppress_output:
-        nlc = _NewLineCallback(update_every_n_seconds=2, prefix="Silence search")
+        nlc = _NewLineCallback(update_every_n_seconds=2, prefix="[ffmpeg:silencedetect]")
         callback = nlc.new_line_callback
     else:
         callback = None
-    stdout, stderr = _agnostic_communicate(p, new_line_callback = callback)
+    stdout, stderr = _agnostic_communicate(p, new_line_callback=callback)
+    seconds_taken = time.time() - callback.im_self.start_time
+    time_taken = autoscrub.seconds_to_hhmmssd(seconds_taken, decimal=False)
+    print("[ffmpeg:silencedetect] Completed in {} ({:.1f}x speed)   ".format(time_taken, estimated_duration/seconds_taken))
     silences = findSilences(stderr)
     if save_silences:
         filename_prefix, file_extension = os.path.splitext(filename)
@@ -568,11 +572,11 @@ def matchLoudness(filename, target_lufs=-18, output_path=None, overwrite=None):
     input_loudness = getLoudness(filename)
     input_lufs = input_loudness['I']
     gain = target_lufs - input_lufs
-    print('Input loudness = %.1f LUFS; Gain to apply = %.1f dB' % (input_lufs, gain))
+    print('[autoscrub:info] Input loudness = %.1f dBLUFS; Gain to apply = %.1f dB' % (input_lufs, gain))
     output_path = ffmpeg(filename, ['-c:v', 'copy', '-af', 'volume=%.1fdB' % gain], output_path, overwrite=overwrite)
     output_loudness = getLoudness(output_path)
     output_lufs = output_loudness['I']
-    print('Output loudness = %.1f LUFS; Error = %.1f dB' % (output_lufs, target_lufs-output_lufs))
+    print('[autoscrub:info] Output loudness = %.1f dBLUFS; Error = %.1f dB' % (output_lufs, target_lufs-output_lufs))
     return output_path
 
 
@@ -622,7 +626,7 @@ def trim(input_path, tstart=0, tstop=None, output_path=None, overwrite=None, cod
     else:
         command += codec
     if __suppress_output and overwrite is None:
-        raise RuntimeError("If ffmpeg output is suppressed, you must specify the overwrite keyword argument or else ffmpeg will hang on user input.")
+        raise RuntimeError("[autoscrub:error] If ffmpeg output is suppressed, you must specify the overwrite keyword argument or else ffmpeg will hang on user input.")
     if overwrite is not None:
         command.append('-y' if overwrite==True else '-n')
     if output_path is None:
@@ -710,11 +714,11 @@ def concatFileList(concat_path, output_path, overwrite=None):
     """
     command = ['ffmpeg', '-safe', '0', '-f', 'concat', '-i', '%s'%concat_path, '-c', 'copy']
     if __suppress_output and overwrite is None:
-        raise RuntimeError("If ffmpeg output is suppressed, you must specify the overwrite keyword argument or else ffmpeg will hang on user input.")
+        raise RuntimeError("[autoscrub:error] If ffmpeg output is suppressed, you must specify the overwrite keyword argument or else ffmpeg will hang on user input.")
     if overwrite is not None:
         command += ['-y'] if overwrite==True else ['-n']
     command += ['%s' % output_path]
-    print('Running ffmpeg command:')
+    print('[autoscrub] Running ffmpeg command:')
     print(list2cmdline(command))
     try:
         p = _agnostic_Popen(command)
@@ -1088,7 +1092,7 @@ def ffmpegComplexFilter(input_path, filter_script_path, output_path=NUL, run_com
     tail = ["%s" % output_path]
     
     if __suppress_output and overwrite is None:
-        raise RuntimeError("If ffmpeg output is suppressed, you must specify the overwrite keyword argument or else ffmpeg will hang on user input.")
+        raise RuntimeError("[autoscrub:error] If ffmpeg output is suppressed, you must specify the overwrite keyword argument or else ffmpeg will hang on user input.")
     if overwrite is not None:
         if overwrite:
             tail.insert(0, '-y')
@@ -1142,11 +1146,11 @@ if __name__ == '__main__':
         os.chdir(folder)
     if not os.path.exists(filter_script_path) or overwrite:
         print('============ Processing %s ==========' % filename)
-        print('\nGetting audio sample rate...')
+        print('\n[ffprobe] Getting audio sample rate...')
         input_sample_rate = getSampleRate(filename)
-        print("Measured sample rate = %d Hz"%input_sample_rate)
+        # print("Measured sample rate = %d Hz"%input_sample_rate)
 
-        print('\nChecking loudness of file...')
+        print('\n[ffmpeg:ebur128] Checking loudness of file...')
         loudness = getLoudness(filename)
         input_lufs = loudness['I']
         gain = target_lufs - input_lufs
@@ -1154,18 +1158,18 @@ if __name__ == '__main__':
         if pan_audio:
             gain -= 3
         input_threshold_dB = input_lufs + target_threshold_dB - target_lufs
-        print('Measured loudness = %.1f LUFS; Silence threshold = %.1f dB; Gain to apply = %.1f dB' % (input_lufs, input_threshold_dB, gain))
+        print('[autoscrub:info] Measured loudness = %.1f dBLUFS; Silence threshold = %.1f dB; Gain to apply = %.1f dB' % (input_lufs, input_threshold_dB, gain))
 
-        print('\nSearching for silence...')
+        print('\n[ffmpeg:silencedetect] Searching for silence...')
         silences = getSilences(filename, input_threshold_dB, silence_duration)
         durations = [s['silence_duration'] for s in silences if 'silence_duration' in s]
         mean_duration = sum(durations)/len(durations)
-        print('Found %i silences of average duration %.1f seconds.' % (len(silences), mean_duration))
+        print('[autoscrub:info] Deteceted %i silences of average duration %.1f seconds.' % (len(silences), mean_duration))
 
-        print('\nGenerating ffmpeg filter_complex script...')
+        print('\n[autoscrub] Generating ffmpeg filter_complex script...')
         writeFilterGraph(filter_script_path, silences, factor=factor, audio_rate=input_sample_rate, pan_audio=pan_audio, gain=gain, rescale=rescale, hasten_audio=hasten_audio)
     else:
-        print('\nUsing existing filter_complex script....')   
+        print('\n[autoscrub:info] Using existing filter_complex script....')   
     
-    print('\nRequired ffmpeg command:')
+    print('\n[autoscrub:info] Required ffmpeg command:')
     result = ffmpegComplexFilter(input_path, filter_script_path, output_path, run_command, overwrite)

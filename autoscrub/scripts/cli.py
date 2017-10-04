@@ -29,14 +29,14 @@ def check_ffmpeg():
     try:
         subprocess.check_output(["ffmpeg", "-L"], stderr=subprocess.STDOUT)
     except (subprocess.CalledProcessError, OSError):
-        click.echo("Could not find ffmpeg executable. Check that ffmpeg is in the local folder or your system PATH and that you can run 'ffmpeg -L' from the command line.")
+        click.echo("[autoscub:error]: Could not find ffmpeg executable. Check that ffmpeg is in the local folder or your system PATH and that you can run 'ffmpeg -L' from the command line.")
         raise click.Abort()
         
     # check ffprobe exists
     try:
         subprocess.check_output(["ffprobe", "-L"], stderr=subprocess.STDOUT)
     except (subprocess.CalledProcessError, OSError):
-        click.echo("Could not find ffprobe executable. Check that ffprobe is in the local folder or your system PATH and that you can run 'ffprobe -L' from the command line.")
+        click.echo("[autoscub:error] Could not find ffprobe executable. Check that ffprobe is in the local folder or your system PATH and that you can run 'ffprobe -L' from the command line.")
         raise click.Abort()
         
 def check_for_new_autoscrub_version():
@@ -57,10 +57,10 @@ def check_for_new_autoscrub_version():
                 upgrade = True
             
             if upgrade:
-                click.echo(click.style("A new version of autoscrub is available", fg='green', bg='black'))
-                click.echo(click.style("You are running autoscrub version: {}".format(autoscrub.__version__), fg='green', bg='black'))
-                click.echo(click.style("The latest autoscrub version is: {}".format(online_version), fg='green', bg='black'))
-                click.echo(click.style("To upgrade, run: pip install -U autoscrub", fg='green', bg='black'))
+                click.echo(click.style("[autoscub:info] A new version of autoscrub is available", fg='green', bg='black'))
+                click.echo(click.style("[autoscub:info] You are running autoscrub version: {}".format(autoscrub.__version__), fg='green', bg='black'))
+                click.echo(click.style("[autoscub:info] The latest autoscrub version is: {}".format(online_version), fg='green', bg='black'))
+                click.echo(click.style("[autoscub:info] To upgrade, run: pip install -U autoscrub", fg='green', bg='black'))
                 return True
                 
     except Exception:
@@ -92,19 +92,19 @@ class NewLineCallback(object):
             # speed_text = line.split('speed=')[-1].split('x')[0]            
             # speed = float(speed_text)
             
-            #format it into seconds
+            # format it into seconds
             seconds = autoscrub.hhmmssd_to_seconds(time_text)
             # hack because the bar.update method takes the number of steps to increase, not the current position
-            percentage = float(seconds)/self.duration*100
+            percentage = min(float(seconds)/self.duration, 1)*100
             
             time_remaining = (time.time()-self.start_time)/percentage*(100-percentage)
             
             if self.last_percentage != int(percentage):
-                click.echo("{:3d}% complete [{} remaining]\r".format(int(percentage), autoscrub.seconds_to_hhmmssd(time_remaining, decimal=False)), nl=False)
+                click.echo("[ffmpeg:filter_complex_script] {:3d}% complete [{} remaining]\r".format(int(percentage), autoscrub.seconds_to_hhmmssd(time_remaining, decimal=False)), nl=False)
                 self.last_percentage = int(percentage)
         except Exception:
             raise
-            click.echo("Could not determine percentage completion. Consider not suppressing the FFmpeg output by running autoscrub with the option --show-ffmpeg-output")
+            click.echo("[autoscrub:warning] Could not determine percentage completion. Consider not suppressing the FFmpeg output by running autoscrub with the option --show-ffmpeg-output")
         else:
             self.time_since_last_print = time.time()
     
@@ -114,7 +114,7 @@ def make_click_dict(*args, **kwargs):
 
 _option__silence_duration = make_click_dict('--silence-duration', '-d', default=2.0, type=float, help='The minimum duration of continuous silence (in seconds) required to trigger speed up of that segment.', show_default=True)
 _option__hasten_audio = make_click_dict('--hasten-audio', '-h', default='tempo', type=click.Choice(['trunc', 'pitch', 'tempo']), help="The method of handling audio during the speed up of silent segments.", show_default=True)
-_option__target_lufs = make_click_dict('--target-lufs', '-l', default=-18.0, type=float, help='The target LUFS for the output audio', show_default=True)
+_option__target_lufs = make_click_dict('--target-lufs', '-l', default=-18.0, type=float, help='The target loudness in dBLUFS for the output audio', show_default=True)
 _option__pan_audio = make_click_dict('--pan-audio', '-p', type=click.Choice(['left', 'right']), help="Copies the specified audio channel (left|right) to both audio channels.", show_default=True)
 _option__rescale = make_click_dict('--rescale', '-r', nargs=2, type=int, metavar="WIDTH HEIGHT", help='rescale the input video file to the resolution specified  [usage: -r 1920 1080]')
 _option__speed = make_click_dict('--speed', '-s', default=8, type=float, help='The factor by which to speed up the video during silent segments', show_default=True)
@@ -131,20 +131,20 @@ def create_filtergraph(input, filter_graph_path, speed, rescale, target_lufs, ta
     click.echo('============ Processing %s ==========' % filename)
     
     # determine audio sample rate
-    click.echo('\nGetting audio sample rate...')
+    click.echo('\n[ffprobe] Getting audio sample rate...')
     input_sample_rate = autoscrub.getSampleRate(input)
     try:
-        click.echo("Measured sample rate = %d Hz"%input_sample_rate)
+        input_sample_rate # click.echo("Measured sample rate = %d Hz"%input_sample_rate)
     except Exception:
-        click.echo("Could not determine the audio samplerate of your file")
+        click.echo("[autoscrub:error] Could not determine the audio samplerate of your file")
         raise click.Abort()
         
-    click.echo('\nChecking loudness of file...')
+    click.echo('\n[ffmpeg:ebur128] Checking loudness of file...')
     loudness = autoscrub.getLoudness(input)
     try:
         input_lufs = loudness['I']
     except Exception:
-        click.echo("Could not determine the loudness of your file")
+        click.echo("[autoscrub:error] Could not determine the loudness of your file")
         raise click.Abort()
     
     # Calculate gain
@@ -152,27 +152,27 @@ def create_filtergraph(input, filter_graph_path, speed, rescale, target_lufs, ta
     
     # Apply gain correction if pan_audio is used (when one stereo channel is silent)
     if pan_audio in ['left', 'right']:
-        click.echo('Reducing gain by 3dB due to audio pan')
+        click.echo('[autoscrub:info] Reducing gain by 3dB due to audio pan')
         gain -= 3
     
     # calculate input_threshold
     input_threshold_dB = input_lufs + target_threshold - target_lufs
     
     # print audio data to terminal
-    click.echo('Measured loudness = %.1f LUFS; Silence threshold = %.1f dB; Gain to apply = %.1f dB' % (input_lufs, input_threshold_dB, gain))
+    click.echo('[autoscrub:info] Measured loudness = %.1f dBLUFS; Silence threshold = %.1f dB; Gain to apply = %.1f dB' % (input_lufs, input_threshold_dB, gain))
 
     # find silent segments
-    click.echo('\nSearching for silence...')
+    click.echo('\n[ffmpeg:silencedetect] Searching for silence...')
     silences = autoscrub.getSilences(input, input_threshold_dB, silence_duration, False)
     durations = [s['silence_duration'] for s in silences if 'silence_duration' in s]
     if len(durations):
         mean_duration = sum(durations)/len(durations)
-        click.echo('Found %i silences of average duration %.1f seconds.' % (len(silences), mean_duration))
+        click.echo('[autoscrub:info] Found %i silences of average duration %.1f seconds.' % (len(silences), mean_duration))
     else:
-        click.confirm("No silences found. Do you wish to continue?", abort=True)
+        click.confirm("[autoscrub:warning] No silences found. Do you wish to continue?", abort=True)
 
     # Generate the filtergraph
-    click.echo('\nGenerating ffmpeg filter_complex script...')
+    click.echo('\n[autoscrub:info] Generating ffmpeg filter_complex script...')
     autoscrub.writeFilterGraph(filter_graph_path, silences, factor=speed, audio_rate=input_sample_rate, pan_audio=pan_audio, gain=gain, rescale=rescale, hasten_audio=hasten_audio, delay=delay, silent_volume=silent_volume)
     
     return silences
@@ -201,7 +201,7 @@ def version():
     # print out version if upgrade not available 
     # (upgrade text prints out current version, so the current version is printed either way)
     if not check_for_new_autoscrub_version():    
-        click.echo("autoscrub version: {}".format(autoscrub.__version__))
+        click.echo("[autoscrub:info] version: {}".format(autoscrub.__version__))
     
 @cli.command()
 @click.option(*_option__silence_duration[0], **_option__silence_duration[1])
@@ -237,7 +237,7 @@ def autoprocess(input, output, speed, rescale, target_lufs, target_threshold, pa
     
     # ensure that there will always be some part of a silent segment that experiences a speedup
     if not (2*delay < silence_duration):
-        click.echo("ERROR: The value for delay must be less than half of the silence_duration specified")
+        click.echo("[autoscrub:error] The value for delay must be less than half of the silence_duration specified")
         return
     
     # check if output file exists and prompt
@@ -260,7 +260,7 @@ def autoprocess(input, output, speed, rescale, target_lufs, target_threshold, pa
         if 'silence_duration' in silence:
             estimated_duration -= (silence['silence_duration']-2*delay)*(1-1.0/speed)
             
-    click.echo("\nautoscrubbing video")
+    click.echo("\n[autoscrub:info] autoscrubbing video")
     # commented out because it's a bit confusing and could be incorrectly interpretted as the estimated conversion time, not video duration
     # click.echo("Estimated duration of autoscrubbed video is {}".format(autoscrub.seconds_to_hhmmssd(estimated_duration)))
     
@@ -272,18 +272,19 @@ def autoprocess(input, output, speed, rescale, target_lufs, target_threshold, pa
     
     # Process the video file using ffmpeg and the filtergraph
     result = autoscrub.ffmpegComplexFilter(input, filter_graph_path, output, run_command=True, overwrite=True, stderr_callback=callback)
-    
-    
-    click.echo("\nDone!")
-    click.echo("FFmpeg command run was: ")
-    click.echo(subprocess.list2cmdline(result))
+    seconds_taken = time.time() - callback.im_self.start_time
+    time_taken = autoscrub.seconds_to_hhmmssd(seconds_taken, decimal=False)
+    click.echo("[ffmpeg:filter_complex_script] Completed in {} ({:.1f}x speed)   ".format(time_taken, estimated_duration/seconds_taken))
+    click.echo("[autoscrub:info] Done!")
+    click.echo("[autoscrub:info] FFmpeg command run was: ")
+    click.echo("   " + subprocess.list2cmdline(result))
         
     # delete the filtergraph temporary file unless we are debugging
     if not debug:
         # delete the temporary file
         os.remove(filter_graph_path)
     else:
-        click.echo('For debugging purposes, the filter script is located at: {filter_graph_path}'.format(filter_graph_path=filter_graph_path))
+        click.echo('[autoscrub:debug] The filter script is located at: {filter_graph_path}'.format(filter_graph_path=filter_graph_path))
 
 @cli.command(name='loudness-adjust')
 @click.option(*_option__target_lufs[0], **_option__target_lufs[1])
@@ -341,17 +342,17 @@ def get_properties(input, show_ffmpeg_output):
     loudness = autoscrub.getLoudness(input)
     
     try:
-        click.echo("Duration: {:.3f}s".format(duration))
+        click.echo("[ffprobe] Duration: {:.3f}s".format(duration))
     except Exception:
-        click.echo("Duration: unknown")
+        click.echo("[ffprobe] Duration: unknown")
     try:
-        click.echo("Audio sample rate: {}Hz".format(samplerate))
+        click.echo("[ffprobe] Audio sample rate: {}Hz".format(samplerate))
     except Exception:
-        click.echo("Audio sample rate: unknown")
+        click.echo("[ffprobe] Audio sample rate: unknown")
     try:
-        click.echo("Loudness: {}LUFS".format(loudness['I']))
+        click.echo("[ffmpeg:ebur128] Loudness: {}LUFS".format(loudness['I']))
     except Exception:
-        click.echo("Loudness: unknown")
+        click.echo("[ffmpeg:ebur128] Loudness: unknown")
     
 @cli.command(name='identify-silences')
 @click.option(*_option__silence_duration[0], **_option__silence_duration[1])
@@ -376,7 +377,7 @@ def get_silences(input, silence_duration, target_threshold, show_ffmpeg_output):
     input = os.path.abspath(input)
     
     # output a message before beginning
-    click.echo("Scanning for silent segments (this may take some time)...")
+    click.echo("[autoscub:info] Scanning for silent segments...")
     
     silences = autoscrub.getSilences(input, target_threshold, silence_duration, save_silences=False)
     
@@ -458,7 +459,7 @@ def make_filtergraph(input, speed, rescale, target_lufs, target_threshold, pan_a
     
     # ensure that there will always be some part of a silent segment that experiences a speedup
     if not (2*delay < silence_duration):
-        click.echo("ERROR: The value for delay must be less than half of the silence_duration specified")
+        click.echo("[autoscrub:error] The value for delay must be less than half of the silence_duration specified")
         return
         
     # determine the path of the filter graph file based on the name of the input file
@@ -502,11 +503,11 @@ def use_filtergraph(input, output, show_ffmpeg_output):
     filter_graph_path = os.path.join(folder, '.'.join(filename.split('.')[:-1])+'.filter-graph')
     
     if not os.path.exists(filter_graph_path):
-        raise Exception('Could not fnd filter-graph file for the specified input video (if you are unsure of what a filter-graph file is, consider using "autoscrub autoprocess"). Ensure that {path} exists. This file can be generated by using "autoscrub make-filtergraph".')
+        raise Exception('[autoscrub:error] Could not find filter-graph file for the specified input video (if you are unsure of what a filter-graph file is, consider using "autoscrub autoprocess"). Ensure that {path} exists. This file can be generated by using "autoscrub make-filtergraph".')
     
     # check if output file exists and prompt
     if os.path.exists(output):
-        click.confirm('The specified output file [{output}] already exists. Do you want to overrite?'.format(output=output), abort=True)
+        click.confirm('[autoscrub:warning] The specified output file [{output}] already exists. Do you want to overrite?'.format(output=output), abort=True)
     
     # Process the video file using ffmpeg and the filtergraph
     result = autoscrub.ffmpegComplexFilter(input, filter_graph_path, output, run_command=True, overwrite=True)
