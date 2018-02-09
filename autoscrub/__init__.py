@@ -1145,12 +1145,12 @@ if __name__ == '__main__':
     if folder is not '':
         os.chdir(folder)
     if not os.path.exists(filter_script_path) or overwrite:
-        print('============ Processing %s ==========' % filename)
-        print('\n[ffprobe] Getting audio sample rate...')
+        print('[autoscrub] Processing %s' % filename)
+        print('[ffprobe] Getting audio sample rate...')
         input_sample_rate = getSampleRate(filename)
         # print("Measured sample rate = %d Hz"%input_sample_rate)
 
-        print('\n[ffmpeg:ebur128] Checking loudness of file...')
+        print('[ffmpeg:ebur128] Checking loudness of file...')
         loudness = getLoudness(filename)
         input_lufs = loudness['I']
         gain = target_lufs - input_lufs
@@ -1160,16 +1160,16 @@ if __name__ == '__main__':
         input_threshold_dB = input_lufs + target_threshold_dB - target_lufs
         print('[autoscrub:info] Measured loudness = %.1f dBLUFS; Silence threshold = %.1f dB; Gain to apply = %.1f dB' % (input_lufs, input_threshold_dB, gain))
 
-        print('\n[ffmpeg:silencedetect] Searching for silence...')
+        print('[ffmpeg:silencedetect] Searching for silence...')
         silences = getSilences(filename, input_threshold_dB, silence_duration)
         durations = [s['silence_duration'] for s in silences if 'silence_duration' in s]
         mean_duration = sum(durations)/len(durations)
         print('[autoscrub:info] Deteceted %i silences of average duration %.1f seconds.' % (len(silences), mean_duration))
 
-        print('\n[autoscrub] Generating ffmpeg filter_complex script...')
+        print('[autoscrub] Generating ffmpeg filter_complex script...')
         writeFilterGraph(filter_script_path, silences, factor=factor, audio_rate=input_sample_rate, pan_audio=pan_audio, gain=gain, rescale=rescale, hasten_audio=hasten_audio)
     else:
-        print('\n[autoscrub:info] Using existing filter_complex script....')   
+        print('[autoscrub:info] Using existing filter_complex script....')   
     
-    print('\n[autoscrub:info] Required ffmpeg command:')
+    print('[autoscrub:info] Required ffmpeg command:')
     result = ffmpegComplexFilter(input_path, filter_script_path, output_path, run_command, overwrite)
