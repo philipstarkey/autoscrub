@@ -125,13 +125,14 @@ _option__start = make_click_dict('--start', default=0, type=float, help='Content
 _option__stop = make_click_dict('--stop', type=float, help='Content after this time is removed', show_default=True)
 _option__codec = make_click_dict('--re-encode', nargs=1, type=str, metavar='CODEC', help='Re-encode the file with the codec specified', show_default=True)
 _option__show_ff_output = make_click_dict('--show-ffmpeg-output', help="Prints the raw FFmpeg and FFprobe output to the terminal", is_flag=True)
+_option__no_prompt = make_click_dict('--suppress-prompts', help="Suppresses confirmation prompts to overwrite output file(s) and proceeds even if no silences are detected in input file.", is_flag=True)
 
-def create_filtergraph(input, filter_graph_path, speed, rescale, target_lufs, target_threshold, pan_audio, hasten_audio, silence_duration, delay, silent_volume):    
+def create_filtergraph(input, filter_graph_path, speed, rescale, target_lufs, target_threshold, pan_audio, hasten_audio, silence_duration, delay, silent_volume, suppress_prompts):    
     folder, filename = os.path.split(input)
-    click.echo('============ Processing %s ==========' % filename)
+    click.echo('[autoscrub:info] Processing %s' % filename)
     
     # determine audio sample rate
-    click.echo('\n[ffprobe] Getting audio sample rate...')
+    click.echo('[ffprobe] Getting audio sample rate...')
     input_sample_rate = autoscrub.getSampleRate(input)
     try:
         input_sample_rate # click.echo("Measured sample rate = %d Hz"%input_sample_rate)
@@ -139,7 +140,7 @@ def create_filtergraph(input, filter_graph_path, speed, rescale, target_lufs, ta
         click.echo("[autoscrub:error] Could not determine the audio samplerate of your file")
         raise click.Abort()
         
-    click.echo('\n[ffmpeg:ebur128] Checking loudness of file...')
+    click.echo('[ffmpeg:ebur128] Checking loudness of file...')
     loudness = autoscrub.getLoudness(input)
     try:
         input_lufs = loudness['I']
@@ -162,17 +163,17 @@ def create_filtergraph(input, filter_graph_path, speed, rescale, target_lufs, ta
     click.echo('[autoscrub:info] Measured loudness = %.1f dBLUFS; Silence threshold = %.1f dB; Gain to apply = %.1f dB' % (input_lufs, input_threshold_dB, gain))
 
     # find silent segments
-    click.echo('\n[ffmpeg:silencedetect] Searching for silence...')
+    click.echo('[ffmpeg:silencedetect] Searching for silence...')
     silences = autoscrub.getSilences(input, input_threshold_dB, silence_duration, False)
     durations = [s['silence_duration'] for s in silences if 'silence_duration' in s]
     if len(durations):
         mean_duration = sum(durations)/len(durations)
         click.echo('[autoscrub:info] Found %i silences of average duration %.1f seconds.' % (len(silences), mean_duration))
-    else:
+    elif not suppress_prompts:
         click.confirm("[autoscrub:warning] No silences found. Do you wish to continue?", abort=True)
 
     # Generate the filtergraph
-    click.echo('\n[autoscrub:info] Generating ffmpeg filter_complex script...')
+    click.echo('[autoscrub:info] Generating ffmpeg filter_complex script...')
     autoscrub.writeFilterGraph(filter_graph_path, silences, factor=speed, audio_rate=input_sample_rate, pan_audio=pan_audio, gain=gain, rescale=rescale, hasten_audio=hasten_audio, delay=delay, silent_volume=silent_volume)
     
     return silences
@@ -213,11 +214,12 @@ def version():
 @click.option(*_option__target_threshold[0], **_option__target_threshold[1])
 @click.option(*_option__silent_volume[0],    **_option__silent_volume[1])
 @click.option(*_option__delay[0],            **_option__delay[1])
-@click.option(*_option__show_ff_output[0],  **_option__show_ff_output[1])
+@click.option(*_option__show_ff_output[0],   **_option__show_ff_output[1])
+@click.option(*_option__no_prompt[0],        **_option__no_prompt[1])
 @click.option('--debug', help="Retains the generated filtergraph file for inspection", is_flag=True)
 @click.argument('input', type=click.Path(exists=True), metavar="input_filepath")
 @click.argument('output', type=click.Path(exists=False), metavar="output_filepath")
-def autoprocess(input, output, speed, rescale, target_lufs, target_threshold, pan_audio, hasten_audio, silence_duration, delay, silent_volume, show_ffmpeg_output, debug):
+def autoprocess(input, output, speed, rescale, target_lufs, target_threshold, pan_audio, hasten_audio, silence_duration, delay, silent_volume, show_ffmpeg_output, suppress_prompts, debug):
     """automatically process the input video and write to the specified output file"""
     
     if show_ffmpeg_output:
@@ -241,8 +243,8 @@ def autoprocess(input, output, speed, rescale, target_lufs, target_threshold, pa
         return
     
     # check if output file exists and prompt
-    if os.path.exists(output):
-        click.confirm('The specified output file [{output}] already exists. Do you want to overrite?'.format(output=output), abort=True)
+    if os.path.exists(output) and not suppress_prompts:
+        click.confirm('[autoscrub:warning] The specified output file [{output}] already exists. Do you want to overwrite it?'.format(output=output), abort=True)
     
     # adjust hasten_audio if 'trunc'
     if hasten_audio == 'trunc':
@@ -253,14 +255,14 @@ def autoprocess(input, output, speed, rescale, target_lufs, target_threshold, pa
     # Python returns an open handle which we don't want, so close it
     os.close(handle)
 
-    silences = create_filtergraph(input, filter_graph_path, speed, rescale, target_lufs, target_threshold, pan_audio, hasten_audio, silence_duration, delay, silent_volume)
+    silences = create_filtergraph(input, filter_graph_path, speed, rescale, target_lufs, target_threshold, pan_audio, hasten_audio, silence_duration, delay, silent_volume, suppress_prompts)
     
     estimated_duration = autoscrub.getDuration(input)
     for silence in silences:
         if 'silence_duration' in silence:
             estimated_duration -= (silence['silence_duration']-2*delay)*(1-1.0/speed)
             
-    click.echo("\n[autoscrub:info] autoscrubbing video")
+    click.echo("[autoscrub:info] autoscrubbing video")
     # commented out because it's a bit confusing and could be incorrectly interpretted as the estimated conversion time, not video duration
     # click.echo("Estimated duration of autoscrubbed video is {}".format(autoscrub.seconds_to_hhmmssd(estimated_duration)))
     
@@ -288,11 +290,12 @@ def autoprocess(input, output, speed, rescale, target_lufs, target_threshold, pa
         click.echo('[autoscrub:debug] The filter script is located at: {filter_graph_path}'.format(filter_graph_path=filter_graph_path))
 
 @cli.command(name='loudness-adjust')
-@click.option(*_option__target_lufs[0], **_option__target_lufs[1])
+@click.option(*_option__target_lufs[0],     **_option__target_lufs[1])
 @click.option(*_option__show_ff_output[0],  **_option__show_ff_output[1])
+@click.option(*_option__no_prompt[0],       **_option__no_prompt[1])
 @click.argument('input', type=click.Path(exists=True), metavar="input_filepath")
 @click.argument('output', type=click.Path(exists=False), metavar="output_filepath")
-def match_loudness(input, output, target_lufs, show_ffmpeg_output):
+def match_loudness(input, output, target_lufs, show_ffmpeg_output, suppress_prompts):
     """Adjusts the loudness of the input file"""
     
     if show_ffmpeg_output:
@@ -311,8 +314,8 @@ def match_loudness(input, output, target_lufs, show_ffmpeg_output):
     output = os.path.abspath(output)
     
     # check if output file exists and prompt
-    if os.path.exists(output):
-        click.confirm('The specified output file [{output}] already exists. Do you want to overrite?'.format(output=output), abort=True)
+    if os.path.exists(output) and not suppress_prompts:
+        click.confirm('[autoscrub:warning] The specified output file [{output}] already exists. Do you want to overwrite?'.format(output=output), abort=True)
     
     autoscrub.matchLoudness(input, target_lufs, output, overwrite=True)
     
@@ -394,9 +397,10 @@ def get_silences(input, silence_duration, target_threshold, show_ffmpeg_output):
 @click.option(*_option__stop[0],  **_option__stop[1])
 @click.option(*_option__codec[0], **_option__codec[1])
 @click.option(*_option__show_ff_output[0],  **_option__show_ff_output[1])
+@click.option(*_option__no_prompt[0],       **_option__no_prompt[1])
 @click.argument('input', type=click.Path(exists=True), metavar="input_filepath")
 @click.argument('output', type=click.Path(exists=False), metavar="output_filepath")
-def trim(input, output, start, stop, re_encode, show_ffmpeg_output):
+def trim(input, output, start, stop, re_encode, show_ffmpeg_output, suppress_prompts):
     """removes unwanted content from the start and end of the input file"""
     
     if show_ffmpeg_output:
@@ -415,8 +419,8 @@ def trim(input, output, start, stop, re_encode, show_ffmpeg_output):
     output = os.path.abspath(output)
     
     # check if output file exists and prompt
-    if os.path.exists(output):
-        click.confirm('The specified output file [{output}] already exists. Do you want to overrite?'.format(output=output), abort=True)
+    if os.path.exists(output) and not suppress_prompts:
+        click.confirm('[autoscrub:warning] The specified output file [{output}] already exists. Do you want to overwrite?'.format(output=output), abort=True)
         
     if re_encode is None:
         re_encode = 'copy'
@@ -437,8 +441,9 @@ def trim(input, output, start, stop, re_encode, show_ffmpeg_output):
 @click.option(*_option__silent_volume[0],    **_option__silent_volume[1])
 @click.option(*_option__delay[0],            **_option__delay[1])
 @click.option(*_option__show_ff_output[0],   **_option__show_ff_output[1])
+@click.option(*_option__no_prompt[0],        **_option__no_prompt[1])
 @click.argument('input', type=click.Path(exists=True), metavar="input_filepath")
-def make_filtergraph(input, speed, rescale, target_lufs, target_threshold, pan_audio, hasten_audio, silence_duration, delay, silent_volume, show_ffmpeg_output):
+def make_filtergraph(input, speed, rescale, target_lufs, target_threshold, pan_audio, hasten_audio, silence_duration, delay, silent_volume, show_ffmpeg_output, suppress_prompts):
     """Generates a filter-graph file for use with ffmpeg. 
     
     \b
@@ -468,20 +473,21 @@ def make_filtergraph(input, speed, rescale, target_lufs, target_threshold, pan_a
     filter_graph_path = os.path.join(folder, '.'.join(filename.split('.')[:-1])+'.filter-graph')
     
     # check if output file exists and prompt
-    if os.path.exists(filter_graph_path):
-        click.confirm('The specified filtergraph output file [{output}] already exists. Do you want to overrite?'.format(output=filter_graph_path), abort=True)
+    if os.path.exists(filter_graph_path) and not suppress_prompts:
+        click.confirm('[autoscrub:warning] The specified filtergraph output file [{output}] already exists. Do you want to overwrite?'.format(output=filter_graph_path), abort=True)
     
     # adjust hasten_audio if 'trunc'
     if hasten_audio == 'trunc':
         hasten_audio = None
     
-    create_filtergraph(input, filter_graph_path, speed, rescale, target_lufs, target_threshold, pan_audio, hasten_audio, silence_duration, delay, silent_volume)
+    create_filtergraph(input, filter_graph_path, speed, rescale, target_lufs, target_threshold, pan_audio, hasten_audio, silence_duration, delay, silent_volume, suppress_prompts)
     
 @cli.command(name='process-filtergraph')
 @click.option(*_option__show_ff_output[0],  **_option__show_ff_output[1])
+@click.option(*_option__no_prompt[0],       **_option__no_prompt[1])
 @click.argument('input', type=click.Path(exists=True), metavar="input_filepath")
 @click.argument('output', type=click.Path(exists=False), metavar="output_filepath")
-def use_filtergraph(input, output, show_ffmpeg_output):
+def use_filtergraph(input, output, show_ffmpeg_output, suppress_prompts):
     """Processes a video file using the filter-graph file created by the autoscrub make-filtergraph command"""
     
     if show_ffmpeg_output:
@@ -507,7 +513,7 @@ def use_filtergraph(input, output, show_ffmpeg_output):
         raise Exception('[autoscrub:error] Could not find filter-graph file for the specified input video (if you are unsure of what a filter-graph file is, consider using "autoscrub autoprocess"). Ensure that {path} exists. This file can be generated by using "autoscrub make-filtergraph".')
     
     # check if output file exists and prompt
-    if os.path.exists(output):
+    if os.path.exists(output) and not suppress_prompts:
         click.confirm('[autoscrub:warning] The specified output file [{output}] already exists. Do you want to overrite?'.format(output=output), abort=True)
     
     # Process the video file using ffmpeg and the filtergraph
