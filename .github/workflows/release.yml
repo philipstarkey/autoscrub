@@ -3,7 +3,7 @@ on: push
 
 jobs:
   test:
-    name: Deploy release to Test PyPI
+    name: Deploy release to PyPI
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source
