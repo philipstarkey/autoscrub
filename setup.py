@@ -55,16 +55,35 @@ elif CURRENT_GIT_COMMIT_HASH:
     VERSION += '-dev{}'.format(index)
 
 
+# get directory of setup.py and the rest of the code for the library
+code_dir = os.path.abspath(os.path.dirname(__file__))
+
 # Auto generate a __version__ package for the package to import
-with open(os.path.join('autoscrub', '__version__.py'), 'w') as f:
+with open(os.path.join(code_dir, 'autoscrub', '__version__.py'), 'w') as f:
     f.write("__version__ = '%s'\n" % VERSION)
+
+# Work around the fact that the readme.md file doesn't exist for users installing
+# from the tar.gz format. However, in this case, they won't be uploading to PyPi
+# so they don't need it!
+try:
+    # Read in the readme file as the long description
+    with open(os.path.join(code_dir, 'readme.md')) as f:
+        long_description = f.read()
+except BaseException:
+    long_description = ""
 
 setup(
     name='autoscrub',
     version=VERSION.replace('+', '-'), # PyPI can't handle local versions, but we want something like this for TestPyPI
     description='Hastens silent intervals of videos using FFmpeg',
     url='https://github.com/philipstarkey/autoscrub',
+    project_urls={
+        "Documentation": "https://autoscrub.readthedocs.io",
+        "Source Code": "https://github.com/philipstarkey/autoscrub",
+    },
     license='GPLv3',
+    long_description=long_description,
+    long_description_content_type='text/markdown',
     author='Russell Anderson, Philip Starkey',
     classifiers=['Development Status :: 4 - Beta',
                  'Programming Language :: Python :: 2.7',

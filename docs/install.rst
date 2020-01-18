@@ -6,7 +6,7 @@ These installation instructions assume you already have Python installed. If you
 .. note:: autoscrub's Python 3 support is experimental, and only works with 3.4+. If you run into any troubles with Python 3, please let us know via the `issue tracker`_, and then try Python 2.7 instead.  
 
 .. _`Anaconda Python`: https://www.continuum.io/downloads
-.. _`issue tracker`: https://bitbucket.org/philipstarkey/autoscrub/issues
+.. _`issue tracker`: https://github.com/philipstarkey/autoscrub/issues
 
 ======
 FFmpeg
@@ -68,7 +68,7 @@ where :code:`<version>` is replaced by the version you wish (for example :code:`
 Development Version
 -------------------
 
-If you wish to use the latest development version, you can obtain the source code from our `mercurial repository`_. Once you have cloned our repository, you should run :code:`python setup.py install` in order to build and install the autoscrub package.
+If you wish to use the latest development version, you can obtain the source code from our `git repository`_. Once you have cloned our repository, you should run :code:`python setup.py install` in order to build and install the autoscrub package.
 
 
-.. _`mercurial repository`: https://bitbucket.org/philipstarkey/autoscrub
+.. _`git repository`: https://github.com/philipstarkey/autoscrub
