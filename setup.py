@@ -27,7 +27,7 @@ CURRENT_GIT_COMMIT_HASH = os.environ.get('GHA_AUTOSCRUB_GIT_COMMIT')
 print('tag-env', CURRENT_TAG)
 print('hash-env', CURRENT_GIT_COMMIT_HASH)
 # Modify the current version if we are building inside our GitHub action
-if CURRENT_TAG is not None and CURRENT_TAG and CURRENT_TAG != 'refs-heads-master':
+if CURRENT_TAG is not None and CURRENT_TAG and CURRENT_TAG != 'refs/heads/master':
     VERSION = CURRENT_TAG
 elif CURRENT_GIT_COMMIT_HASH:
     VERSION += '+' + CURRENT_GIT_COMMIT_HASH
