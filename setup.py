@@ -39,7 +39,7 @@ with open(os.path.join('autoscrub', '__version__.py'), 'w') as f:
 
 setup(
     name='autoscrub',
-    version=VERSION,
+    version=VERSION.replace('+', '-'), # PyPI can't handle local versions, but we want something like this for TestPyPI
     description='Hastens silent intervals of videos using FFmpeg',
     url='https://github.com/philipstarkey/autoscrub',
     license='GPLv3',
