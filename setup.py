@@ -44,8 +44,8 @@ elif CURRENT_GIT_COMMIT_HASH:
                     break
                 else:
                     index += 1
-    except:
-        print('')
+    except BaseException:
+        print('GitHub Action debug: Error while querying PyPI release information. Will guess -dev0 is the correct postfix.')
         pass
 
     VERSION += '-dev{}'.format(index)
