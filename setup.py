@@ -40,14 +40,18 @@ elif CURRENT_GIT_COMMIT_HASH:
         if response.status_code == 200:
             found = True
             while found:
-                if '{version}-dev{index}'.format(version=VERSION, index=index) not in data['releases']:
+                # PyPI converts '-' to '.' in version
+                if '{version}.dev{index}'.format(version=VERSION, index=index) not in data['releases']:
                     break
                 else:
                     index += 1
+        else:
+            print('GitHub Action debug: Error while getting JSON data from test PyPI. Status code was:', response.status_code)
     except BaseException:
         print('GitHub Action debug: Error while querying PyPI release information. Will guess -dev0 is the correct postfix.')
         pass
 
+    # Despite PyPI converting '-' to '.', we want to use '-' in __version__.py as it matches semver specs.
     VERSION += '-dev{}'.format(index)
 
 
