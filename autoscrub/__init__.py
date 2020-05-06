@@ -877,7 +877,7 @@ def silenceFilterGraph(silences, factor, delay=0.25, audio_rate=44100, hasten_au
                 tempos.append('atempo=%.3f/%d'%(factor, 2**int(q)))                
             tempo_str = ','.join(tempos)
             
-            astrings.append('%satrim=%s:%s,%s,volume=%.3f[a%i];' % (a_in, ti, tf, tempo_str, silent_volume, (2*i)))
+            astrings.append('%satrim=%s:%s,asetpts=PTS-STARTPTS,%s,volume=%.3f[a%i];' % (a_in, ti, tf, tempo_str, silent_volume, (2*i)))
         else:
             # Use first 1/factor samples of silence for audio (no pitch increase)
             astrings.append('%satrim=%s:%s,asetpts=PTS-STARTPTS,volume=%.3f[a%i];' % (a_in, ti, ta, silent_volume, (2*i)))
