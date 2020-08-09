@@ -95,7 +95,7 @@ class NewLineCallback(object):
             # format it into seconds
             seconds = autoscrub.hhmmssd_to_seconds(time_text)
             # hack because the bar.update method takes the number of steps to increase, not the current position
-            percentage = min(float(seconds)/self.duration, 1)*100
+            percentage = max(min(float(seconds)/self.duration, 1), 1e-3) * 100
             
             time_remaining = (time.time()-self.start_time)/percentage*(100-percentage)
             
